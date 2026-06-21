@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
+from typing import Optional
 import os, requests
 from services.data import get_nav
 from services.metrics import nav_percentile, rsi, trend_ma
@@ -8,7 +9,7 @@ router = APIRouter()
 
 class ChatReq(BaseModel):
     question: str
-    code: str | None = None
+    code: Optional[str] = None
 
 @router.post("/chat")
 def chat(req: ChatReq):
