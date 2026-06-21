@@ -405,7 +405,16 @@ def remove(code: str):
 @router.post("/batch-import")
 def batch_import(items: List[SaveItem]):
     """批量导入：只填代码即可。"""
+    import traceback
     from db import save_holding, list_holdings
     for h in items:
         save_holding(h.code, h.name)
-    return analyze([HoldItem(code=h.code, name=h.name) for h in items])
+    try:
+        return analyze([HoldItem(code=h.code, name=h.name) for h in items])
+    except Exception as e:
+        traceback.print_exc()
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e), "detail": traceback.format_exc()}
+        )

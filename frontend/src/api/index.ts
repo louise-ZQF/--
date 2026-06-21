@@ -1,5 +1,5 @@
 import axios from "axios"
-const http = axios.create({ baseURL: "/api", timeout: 60000 })
+const http = axios.create({ baseURL: "/api", timeout: 180000 })
 
 export const api = {
   // 持仓
