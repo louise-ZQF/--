@@ -54,22 +54,50 @@ def region_label(region: str) -> str:
     return {"cn":"🇨🇳 A股","hk":"🇭🇰 港股","us":"🇺🇸 美股","jp":"🇯🇵 日本","kr":"🇰🇷 韩国","overseas":"🌍 海外","all":"全部"}.get(region, region)
 
 def screen_4433_by_region(region: str = "all"):
-    """按地区筛选。"""
-    results = screen_4433()
-    if not results or region == "all":
-        return results
+    """按地区筛选：先分地区，再在各地区内做4433。"""
+    from services.data import get_rank
+    df = get_rank()
+    if df is None or df.empty:
+        return []
 
-    filtered = []
-    for f in results:
-        name = f.get("基金简称", f.get("name", ""))
-        r = classify_region_by_name(name)
-        if region == "china":
-            if r in ("cn", "hk"): filtered.append({**f, "region": r, "region_label": region_label(r)})
-        elif region == "overseas":
-            if r in ("us", "jp", "kr", "hk"): filtered.append({**f, "region": r, "region_label": region_label(r)})
-        elif r == region:
-            filtered.append({**f, "region": r, "region_label": region_label(r)})
-    return filtered
+    # 先给每只基金打上地区标签
+    names = df["基金简称"] if "基金简称" in df.columns else df.get("name", [])
+    df["_region"] = [classify_region_by_name(str(n)) for n in names]
+    df["_region_label"] = [region_label(r) for r in df["_region"]]
+
+    # 按地区过滤
+    if region == "china":
+        df = df.copy()[ df["_region"].isin(["cn", "hk"])]
+    elif region == "overseas":
+        df = df.copy()[ df["_region"].isin(["us", "jp", "kr", "hk"])]
+    elif region != "all":
+        df = df.copy()[ df["_region"] == region]
+
+    if df.empty:
+        return []
+
+    # 在地区内部做 4433 筛选
+    cols = {"近1年": "y1", "近2年": "y2", "近3年": "y3", "今年来": "ytd", "近6月": "m6", "近3月": "m3"}
+    for raw, key in cols.items():
+        if raw in df.columns:
+            df[key] = pd.to_numeric(df[raw], errors="coerce")
+
+    def top(series, frac):
+        return series >= series.quantile(1 - frac)
+
+    try:
+        mask = (top(df["y1"], 0.25) & top(df["y2"], 0.25) & top(df["y3"], 0.25) &
+                top(df["ytd"], 0.25) & top(df["m6"], 1 / 3) & top(df["m3"], 1 / 3))
+        keep = ["基金代码", "基金简称", "y1", "y2", "y3", "m6", "m3", "_region", "_region_label"]
+        keep = [c for c in keep if c in df.columns]
+        result = df[mask][keep].head(50).to_dict(orient="records")
+        # Rename _region fields
+        for r in result:
+            r["region"] = r.pop("_region", "")
+            r["region_label"] = r.pop("_region_label", "")
+        return result
+    except Exception:
+        return []
 
 def get_fund_direction(code: str) -> list:
     """获取基金投资方向标签。"""
