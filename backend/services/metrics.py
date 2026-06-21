@@ -27,7 +27,13 @@ def annual_return(nav: pd.Series) -> float:
     if len(nav) < 2:
         return 0.0
     total = nav.iloc[-1] / nav.iloc[0] - 1
-    days = (nav.index[-1] - nav.index[0]).days or 1
+    try:
+        days = (nav.index[-1] - nav.index[0]).days
+    except AttributeError:
+        days = len(nav) - 1
+    days = days or 1
+    if total <= -1:
+        return -1.0
     return float((1 + total) ** (365 / days) - 1)
 
 def annual_volatility(rets: pd.Series) -> float:
@@ -56,3 +62,11 @@ def sortino_ratio(rets: pd.Series, rf: float = 0.02) -> float:
     ann_ret = annual_return(rets)
     ann_down_vol = downside.std() * np.sqrt(252)
     return float((ann_ret - rf) / (ann_down_vol + 1e-9)) if ann_down_vol > 0 else 0.0
+
+def calmar_ratio(nav: pd.Series, rf: float = 0.02) -> float:
+    """Calmar比率 = (年化收益率-无风险利率) / 最大回撤绝对值。"""
+    ann_ret = annual_return(nav)
+    mdd = max_drawdown(nav)
+    if mdd >= 0:
+        return 0.0
+    return float((ann_ret - rf) / (abs(mdd) + 1e-9))

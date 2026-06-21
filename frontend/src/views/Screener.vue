@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <h1 class="page-title">🔍 基金筛选</h1>
+    <h1 class="page-title">基金筛选</h1>
     <p class="page-subtitle">4433法则选基 · 经理风格评分</p>
 
     <div class="card">
@@ -12,10 +12,10 @@
         </button>
       </div>
       <div style="display:flex;gap:10px;align-items:flex-end">
-        <button class="btn btn-primary" @click="screen" :disabled="loading">{{ loading ? '筛选中…' : '🔍 4433 筛选' }}</button>
+        <button class="btn btn-primary" @click="screen" :disabled="loading">{{ loading ? '筛选中…' : '4433 筛选' }}</button>
         <div style="flex:1"></div>
         <input v-model="scoreCode" placeholder="代码评分" style="width:140px">
-        <button class="btn" @click="score" :disabled="scoring">{{ scoring ? '评分中…' : '📊 评分' }}</button>
+        <button class="btn" @click="score" :disabled="scoring">{{ scoring ? '评分中…' : '评分' }}</button>
       </div>
     </div>
 
@@ -27,6 +27,7 @@
         <thead><tr>
           <th>代码</th><th>简称</th><th>地区</th><th>投资方向</th>
           <th>近1年</th><th>近3年</th>
+          <th>短期表现</th><th>排名</th>
           <th>买入时机</th>
           <th></th>
         </tr></thead>
@@ -40,6 +41,16 @@
             </td>
             <td :style="{color:parseFloat(f.y1)>0?'var(--green)':'var(--red)'}">{{ f.y1 }}%</td>
             <td :style="{color:parseFloat(f.y3)>0?'var(--green)':'var(--red)'}">{{ f.y3 }}%</td>
+            <td style="font-size:11px;white-space:nowrap">
+              <span v-if="f.perf" :style="{color:f.perf.daily>=0?'var(--green)':'var(--red)'}">{{ f.perf.daily }}%</span>
+              <span v-if="f.perf" style="color:var(--muted)"> / </span>
+              <span v-if="f.perf" :style="{color:f.perf.week_1>=0?'var(--green)':'var(--red)'}">{{ f.perf.week_1 }}%</span>
+              <span v-else style="color:var(--muted)">—</span>
+            </td>
+            <td style="font-size:12px">
+              <span v-if="f.perf">{{ f.perf.rank }}/{{ f.perf.total_funds }}</span>
+              <span v-else style="color:var(--muted)">—</span>
+            </td>
             <td>
               <span v-if="f.timing" :style="{color:f.timing.color,fontWeight:'600',fontSize:'13px'}">{{ f.timing.label }}</span>
               <span v-else style="color:var(--muted)">—</span>
@@ -48,8 +59,8 @@
             <td>
               <button v-if="!watchlistCodes.has(f['基金代码']||f.code)"
                 class="btn" style="font-size:11px;padding:4px 10px"
-                @click="addToWatch(f)">⭐ 加自选</button>
-              <span v-else style="font-size:11px;color:var(--muted)">✅ 已添加</span>
+                @click="addToWatch(f)">加自选</button>
+              <span v-else style="font-size:11px;color:var(--muted)">已添加</span>
             </td>
           </tr>
         </tbody>
@@ -65,12 +76,12 @@
     </div>
 
     <div class="card" v-if="!results.length && !loading && !scoreResult">
-      <div class="empty-state"><div class="icon">🔍</div><div class="title">点击"4433 筛选"查看精选基金</div></div>
+      <div class="empty-state"><div class="title">点击"4433 筛选"查看精选基金</div></div>
     </div>
 
     <div class="card" style="margin-top:20px">
       <details style="cursor:pointer">
-        <summary style="font-weight:600;font-size:15px;margin-bottom:12px">📖 术语解释</summary>
+        <summary style="font-weight:600;font-size:15px;margin-bottom:12px">术语解释</summary>
         <div style="font-size:13px;color:var(--ink-secondary);line-height:1.8;padding-top:8px">
           <p><b>4433法则</b>：经典选基规则。近1/2/3年+今年来收益排同类前1/4，近6月+近3月排前1/3。</p>
           <p><b>郑希6维评分</b>：基于基金经理郑希公开投资方法的6维度评估（景气方向、低位弹性、全球视野、流动性、周期拼接、业绩印证）。评分越高=越符合景气度投资框架。</p>
@@ -89,9 +100,9 @@ const scoreCode = ref(""), scoreResult = ref<any>(null), scoring = ref(false)
 const selectedRegion = ref("all")
 const watchlistCodes = ref<Set<string>>(new Set())
 const regions = [
-  {value:"all", label:"🌍 全部"},
-  {value:"china", label:"🇨🇳 中国(A股+港股)"},
-  {value:"overseas", label:"🌏 海外(美股+日韩)"},
+  {value:"all", label:"全部"},
+  {value:"china", label:"中国(A股+港股)"},
+  {value:"overseas", label:"海外(美股+日韩)"},
 ]
 onMounted(async () => {
   try {

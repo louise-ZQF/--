@@ -2,7 +2,6 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="logo" @click="$router.push('/')">
-        <span class="logo-icon">📈</span>
         <span class="logo-text">FundPicker</span>
       </div>
       <nav class="nav">
@@ -21,9 +20,9 @@
 
 <script setup lang="ts">
 const menu = [
-  { path: "/holdings", icon: "💼", label: "持仓分析" },
-  { path: "/watchlist", icon: "⭐", label: "自选监控" },
-  { path: "/screener", icon: "🔍", label: "基金筛选" },
+  { path: "/holdings", icon: "", label: "持仓" },
+  { path: "/watchlist", icon: "", label: "自选" },
+  { path: "/screener", icon: "", label: "筛选" },
 ]
 </script>
 

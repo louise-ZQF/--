@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query
 from services.score import screen_4433_by_region, score_fund, classify_region_by_name
 from services.direction import get_fund_direction
+from services.data import get_short_term_perf
 
 router = APIRouter()
 
@@ -106,6 +107,7 @@ def screen_full(region: str = Query("all"), with_timing: bool = True):
         item = {**r}
         if code:
             item["direction"] = get_fund_direction(code)
+            item["perf"] = get_short_term_perf(code)
             if with_timing:
                 item["timing"] = zhengxi_timing(code, name)
         out.append(item)

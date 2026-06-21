@@ -77,6 +77,29 @@ def get_rank() -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
+@cached(ttl=3600)
+def get_short_term_perf(code: str) -> dict:
+    """获取短期行情：日增长率、近1周、近1月、同类排名。"""
+    df = get_rank()
+    if df.empty:
+        return {}
+    try:
+        match = df[df["基金代码"].astype(str) == str(code)]
+        if match.empty:
+            return {}
+        row = match.iloc[0]
+        return {
+            "排名": int(row.get("序号", 0)),
+            "日涨幅": str(row.get("日增长率", "")),
+            "近1周": str(row.get("近1周", "")),
+            "近1月": str(row.get("近1月", "")),
+            "近3月": str(row.get("近3月", "")),
+            "净值": str(row.get("单位净值", "")),
+            "总基金数": int(len(df)),
+        }
+    except Exception:
+        return {}
+
 @cached(ttl=86400)
 def get_all_funds() -> pd.DataFrame:
     """全市场基金列表。"""
@@ -146,6 +169,60 @@ def get_index_daily(code: str) -> pd.DataFrame:
         return ak.stock_zh_index_daily(symbol=code)
     except Exception:
         return pd.DataFrame()
+
+
+@cached(ttl=86400)
+def get_full_holdings(code: str) -> dict:
+    """获取基金全部持仓 + 地域分布比例。"""
+    try:
+        df = ak.fund_portfolio_hold_em(symbol=code, date="2025")
+        if df is None or df.empty:
+            return {"holdings": [], "region_breakdown": {}}
+
+        # 取最新季度数据
+        latest_quarter = df["季度"].iloc[0]
+        latest = df[df["季度"] == latest_quarter].copy()
+
+        holdings = []
+        region_pct = {"A股": 0.0, "港股": 0.0, "美股": 0.0, "其他": 0.0}
+
+        for _, row in latest.iterrows():
+            stock_code = str(row.get("股票代码", ""))
+            stock_name = str(row.get("股票名称", ""))
+            pct = float(row.get("占净值比例", 0))
+
+            # 判断市场
+            if len(stock_code) == 6 and stock_code.isdigit():
+                market = "A股"
+            elif len(stock_code) == 5 and stock_code.startswith("0"):
+                market = "港股"
+            elif any(kw in stock_name for kw in ["苹果","微软","英伟达","谷歌","亚马逊","Meta","特斯拉","NVIDIA","Apple","Microsoft","Amazon"]):
+                market = "美股"
+            elif "-" in stock_name or any(kw in stock_name.upper() for kw in ["-S","-W","-SW"]):
+                market = "港股"
+            else:
+                market = "其他"
+
+            holdings.append({
+                "代码": stock_code,
+                "名称": stock_name,
+                "占比": round(pct, 2),
+                "市场": market,
+            })
+            region_pct[market] += pct
+
+        # 四舍五入
+        for k in region_pct:
+            region_pct[k] = round(region_pct[k], 2)
+
+        return {
+            "季度": latest_quarter,
+            "持仓": holdings,
+            "地域分布": region_pct,
+            "总占比": round(sum(r["占比"] for r in holdings), 2),
+        }
+    except Exception:
+        return {"holdings": [], "region_breakdown": {}}
 
 
 # ── FundCrawler 模式：天天基金 HTML 页面抓取 ────────────────────

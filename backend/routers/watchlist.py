@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from services.data import get_nav, get_all_funds, get_fund_overview, get_fund_manager_info, get_fund_risk_data
+from services.data import get_nav, get_all_funds, get_fund_overview, get_fund_manager_info, get_fund_risk_data, get_short_term_perf, get_full_holdings
 from services.metrics import nav_percentile, trend_ma, rsi
 from db import add_watch, list_watch, del_watch
 
@@ -13,6 +13,11 @@ def add(code: str): add_watch(code); return {"ok": True}
 
 @router.delete("/del")
 def remove(code: str): del_watch(code); return {"ok": True}
+
+@router.get("/holdings")
+def fund_holdings(code: str):
+    """获取基金的完整持仓和地域分布。"""
+    return get_full_holdings(code)
 
 @router.get("/signal")
 def signal():
@@ -68,5 +73,25 @@ def signal():
             "overview": get_fund_overview(code),
             "manager": get_fund_manager_info(code),
             "risk": get_fund_risk_data(code),
+            "perf": get_short_term_perf(code),
+            # 持仓摘要
+            "holdings_summary": _build_holdings_summary(code),
         })
     return res
+
+
+def _build_holdings_summary(code: str) -> dict:
+    """构建持仓摘要：前5大持仓 + 地域分布。"""
+    try:
+        data = get_full_holdings(code)
+        holdings = data.get("持仓", [])
+        top5 = holdings[:5]
+        region = data.get("地域分布", {})
+        return {
+            "前5持仓": top5,
+            "地域分布": region,
+            "总占比": data.get("总占比", 0),
+            "季度": data.get("季度", ""),
+        }
+    except Exception:
+        return {"前5持仓": [], "地域分布": {}, "总占比": 0, "季度": ""}
