@@ -18,20 +18,23 @@
     <div v-if="signals.length">
       <div class="card" v-for="s in signals" :key="s.code">
         <div class="signal-row" :class="s.can_buy ? 'signal-buy' : 'signal-wait'">
-          <span style="font-size:24px">{{ s.can_buy ? '✅' : '⏳' }}</span>
+          <span style="font-size:28px">{{ s.can_buy ? '✅' : '⏳' }}</span>
           <div style="flex:1">
-            <b>{{ s.code }}</b>
-            <div style="font-size:13px;margin-top:2px">{{ s.reason }}</div>
-            <div style="font-size:12px;color:var(--muted);margin-top:4px">{{ s.detail }}</div>
+            <b style="font-size:15px">{{ s.name || s.code }}</b>
+            <span style="color:var(--muted);font-size:12px;margin-left:8px">{{ s.code }}</span>
+            <div style="font-size:13px;margin-top:4px;white-space:pre-line;line-height:1.6">{{ s.reason }}</div>
           </div>
           <button class="btn btn-danger" @click="remove(s.code)" style="font-size:11px">移除</button>
         </div>
-        <!-- Mini stat bars -->
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
-          <div><div style="font-size:11px;color:var(--muted)">估值分位</div><div style="font-weight:700">{{ (s.percentile*100).toFixed(0) }}%</div></div>
-          <div><div style="font-size:11px;color:var(--muted)">距高点</div><div style="font-weight:700" :style="{color:s.drawdown<-0.1?'var(--green)':'var(--amber)'}">{{ (s.drawdown*100).toFixed(0) }}%</div></div>
-          <div><div style="font-size:11px;color:var(--muted)">RSI</div><div style="font-weight:700" :style="{color:s.rsi<60?'var(--green)':'var(--red)'}">{{ s.rsi }}</div></div>
-          <div><div style="font-size:11px;color:var(--muted)">趋势</div><div style="font-weight:700">{{ s.trend }}</div></div>
+
+        <!-- Condition checklist -->
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+          <div v-for="(check, label) in s.checks" :key="label"
+            style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px">
+            <span>{{ check.pass ? '✅' : '❌' }}</span>
+            <span style="flex:1">{{ label }}</span>
+            <span :style="{color: check.pass ? 'var(--green)' : 'var(--red)'}">{{ check.value }}</span>
+          </div>
         </div>
       </div>
     </div>

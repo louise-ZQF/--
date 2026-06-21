@@ -46,7 +46,10 @@
               <div v-if="f.timing?.reason" style="font-size:11px;color:var(--muted)">{{ f.timing.reason }}</div>
             </td>
             <td>
-              <button class="btn" style="font-size:11px;padding:4px 10px" @click="addToWatch(f)">⭐ 加自选</button>
+              <button v-if="!watchlistCodes.has(f['基金代码']||f.code)"
+                class="btn" style="font-size:11px;padding:4px 10px"
+                @click="addToWatch(f)">⭐ 加自选</button>
+              <span v-else style="font-size:11px;color:var(--muted)">✅ 已添加</span>
             </td>
           </tr>
         </tbody>
@@ -67,16 +70,23 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref } from "vue"
+import { ref, onMounted } from "vue"
 import { api } from "../api"
 const results = ref<any[]>([]), loading = ref(false)
 const scoreCode = ref(""), scoreResult = ref<any>(null), scoring = ref(false)
 const selectedRegion = ref("all")
+const watchlistCodes = ref<Set<string>>(new Set())
 const regions = [
   {value:"all", label:"🌍 全部"},
   {value:"china", label:"🇨🇳 中国(A股+港股)"},
   {value:"overseas", label:"🌏 海外(美股+日韩)"},
 ]
+onMounted(async () => {
+  try {
+    const wl = await api.listWatch()
+    wl.forEach((w: any) => watchlistCodes.value.add(w.code))
+  } catch(e) {}
+})
 async function screen() {
   loading.value = true
   const resp = await fetch(`/api/screener/4433-full?region=${selectedRegion.value}`).then(r=>r.json())
@@ -87,6 +97,6 @@ async function score() { scoring.value = true; scoreResult.value = await api.sco
 async function addToWatch(f: any) {
   const code = f['基金代码'] || f.code
   await api.addWatch(code)
-  alert(`已添加 ${code} 到自选 ✅ 去「自选监控」查看买入分析`)
+  watchlistCodes.value.add(code)
 }
 </script>
