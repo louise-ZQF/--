@@ -4,6 +4,7 @@ const http = axios.create({ baseURL: "/api", timeout: 60000 })
 export const api = {
   // 持仓
   analyzeHoldings: (items:any[]) => http.post("/holdings/analyze", items).then(r=>r.data),
+  batchImport: (items:any[]) => http.post("/holdings/batch-import", items).then(r=>r.data),
   listHoldings: () => http.get("/holdings/list").then(r=>r.data),
   saveHolding: (item:any) => http.post("/holdings/save", item).then(r=>r.data),
   delHolding: (code:string) => http.delete(`/holdings/del?code=${code}`).then(r=>r.data),

@@ -41,7 +41,7 @@
           <summary style="font-size:12px;color:var(--muted);font-weight:500">短期行情与持仓分析</summary>
           <div style="padding-top:8px;font-size:12px">
             <div v-if="s.perf" style="display:flex;flex-wrap:wrap;gap:6px 12px;margin-bottom:10px">
-              <span>排名: <b :style="{color: s.perf.rank / s.perf.total_funds <= 0.1 ? 'var(--green)' : s.perf.rank / s.perf.total_funds > 0.5 ? 'var(--red)' : 'var(--ink-secondary)'}">{{ s.perf.rank }}/{{ s.perf.total_funds }}</b></span>
+              <span>排名: <b :style="{color: s.perf.rank_pct <= 20 ? 'var(--green)' : s.perf.rank_pct <= 50 ? 'var(--amber)' : 'var(--red)'}">{{ s.perf.category }} {{ s.perf.rank }}/{{ s.perf.total_funds }} (前{{ s.perf.rank_pct }}%)</b></span>
               <span>日涨幅: <b :style="{color: s.perf.daily >= 0 ? 'var(--green)' : 'var(--red)'}">{{ s.perf.daily }}%</b></span>
               <span>近1周: <b :style="{color: s.perf.week_1 >= 0 ? 'var(--green)' : 'var(--red)'}">{{ s.perf.week_1 }}%</b></span>
               <span>近1月: <b :style="{color: s.perf.month_1 >= 0 ? 'var(--green)' : 'var(--red)'}">{{ s.perf.month_1 }}%</b></span>

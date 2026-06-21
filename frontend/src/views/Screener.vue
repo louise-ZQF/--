@@ -7,22 +7,22 @@
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button v-for="r in regions" :key="r.value"
           class="btn" :class="{'btn-primary': selectedRegion===r.value}"
-          @click="selectedRegion=r.value; screen()">
+          @click="switchRegion(r.value)">
           {{ r.label }}
         </button>
       </div>
       <div style="display:flex;gap:10px;align-items:flex-end">
-        <button class="btn btn-primary" @click="screen" :disabled="loading">{{ loading ? '筛选中…' : '4433 筛选' }}</button>
+        <button class="btn btn-primary" @click="fetchAll" :disabled="loading">{{ loading ? '加载中…' : '刷新' }}</button>
         <div style="flex:1"></div>
         <input v-model="scoreCode" placeholder="代码评分" style="width:140px">
         <button class="btn" @click="score" :disabled="scoring">{{ scoring ? '评分中…' : '评分' }}</button>
       </div>
     </div>
 
-    <div v-if="loading" class="loading">正在筛选全市场基金…</div>
+    <div v-if="loading" class="loading">正在加载基金数据…</div>
 
-    <div v-if="results.length" class="card">
-      <h3 style="margin-bottom:12px">4433 精选基金 ({{ results.length }}只)</h3>
+    <div v-if="filteredResults.length" class="card">
+      <h3 style="margin-bottom:12px">4433 精选基金 ({{ filteredResults.length }}只)</h3>
       <table>
         <thead><tr>
           <th>代码</th><th>简称</th><th>地区</th><th>投资方向</th>
@@ -32,7 +32,7 @@
           <th></th>
         </tr></thead>
         <tbody>
-          <tr v-for="f in results.slice(0,30)" :key="f['基金代码']||f.code">
+          <tr v-for="f in filteredResults.slice(0,30)" :key="f['基金代码']||f.code">
             <td>{{ f['基金代码']||f.code }}</td>
             <td>{{ f['基金简称']||f.name }}</td>
             <td>{{ f.region_label||'—' }}</td>
@@ -75,8 +75,8 @@
       </div>
     </div>
 
-    <div class="card" v-if="!results.length && !loading && !scoreResult">
-      <div class="empty-state"><div class="title">点击"4433 筛选"查看精选基金</div></div>
+    <div class="card" v-if="!allResults.length && !loading && !scoreResult">
+      <div class="empty-state"><div class="title">加载完成，暂无数据</div></div>
     </div>
 
     <div class="card" style="margin-top:20px">
@@ -95,7 +95,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { api } from "../api"
-const results = ref<any[]>([]), loading = ref(false)
+const allResults = ref<any[]>([]), filteredResults = ref<any[]>([]), loading = ref(false)
 const scoreCode = ref(""), scoreResult = ref<any>(null), scoring = ref(false)
 const selectedRegion = ref("all")
 const watchlistCodes = ref<Set<string>>(new Set())
@@ -105,16 +105,31 @@ const regions = [
   {value:"overseas", label:"海外(美股+日韩)"},
 ]
 onMounted(async () => {
+  fetchAll()
   try {
     const wl = await api.listWatch()
     wl.forEach((w: any) => watchlistCodes.value.add(w.code))
   } catch(e) {}
 })
-async function screen() {
+async function fetchAll() {
   loading.value = true
-  const resp = await fetch(`/api/screener/4433-full?region=${selectedRegion.value}`).then(r=>r.json())
-  results.value = resp
+  const resp = await fetch(`/api/screener/4433-full?region=all`).then(r=>r.json())
+  allResults.value = resp
+  applyFilter()
   loading.value = false
+}
+function applyFilter() {
+  if (selectedRegion.value === "all") {
+    filteredResults.value = allResults.value
+  } else if (selectedRegion.value === "china") {
+    filteredResults.value = allResults.value.filter((r:any) => ["cn","hk"].includes(r.region))
+  } else if (selectedRegion.value === "overseas") {
+    filteredResults.value = allResults.value.filter((r:any) => ["us","jp","kr"].includes(r.region))
+  }
+}
+function switchRegion(r: string) {
+  selectedRegion.value = r
+  applyFilter()
 }
 async function score() { scoring.value = true; scoreResult.value = await api.scoreFund(scoreCode.value); scoring.value = false }
 async function addToWatch(f: any) {

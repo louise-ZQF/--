@@ -77,12 +77,51 @@ def get_rank() -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
+# 分类排名缓存
+_CAT_RANK_CACHE = {}
+_CAT_RANK_CACHE_TIME = {}
+
+def _get_category_rank(category: str):
+    """获取某分类的排名数据（缓存1小时）。"""
+    import time
+    now = time.time()
+    if category in _CAT_RANK_CACHE and (now - _CAT_RANK_CACHE_TIME.get(category, 0)) < 3600:
+        return _CAT_RANK_CACHE[category]
+    try:
+        df = ak.fund_open_fund_rank_em(symbol=category)
+        _CAT_RANK_CACHE[category] = df
+        _CAT_RANK_CACHE_TIME[category] = now
+        return df
+    except Exception:
+        return pd.DataFrame()
+
+
 @cached(ttl=3600)
 def get_short_term_perf(code: str) -> dict:
-    """获取短期行情：日增长率、近1周、近1月、同类排名。"""
-    df = get_rank()
+    """获取短期行情：日增长率、近1周、近1月、同类排名（分类内排名）。"""
+    overview = get_fund_overview(code)
+    fund_type = overview.get("fund_type", "")
+
+    # 映射 EastMoney 基金类型到 akshare 分类 symbol
+    _CATEGORY_MAP = [
+        (["QDII"], "QDII"),
+        (["FOF"], "FOF"),
+        (["货币"], "货币型"),
+        (["债券"], "债券型"),
+        (["指数"], "指数型"),
+        (["股票"], "股票型"),
+        (["混合"], "混合型"),
+    ]
+    category = "全部"
+    for keywords, sym in _CATEGORY_MAP:
+        if any(kw in fund_type for kw in keywords):
+            category = sym
+            break
+
+    df = _get_category_rank(category)
     if df.empty:
         return {}
+
     try:
         match = df[df["基金代码"].astype(str) == str(code)]
         if match.empty:
@@ -96,6 +135,8 @@ def get_short_term_perf(code: str) -> dict:
             "month_3": str(row.get("近3月", "")),
             "nav": str(row.get("单位净值", "")),
             "total_funds": int(len(df)),
+            "category": category,
+            "rank_pct": round(int(row.get("序号", 0)) / max(int(len(df)), 1) * 100, 1),
         }
     except Exception:
         return {}

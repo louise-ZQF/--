@@ -37,7 +37,7 @@
             <span>日涨幅: <b :style="{color:f.perf.daily>=0?'var(--green)':'var(--red)'}">{{ f.perf.daily }}%</b></span>
             <span>近1周: <b :style="{color:f.perf.week_1>=0?'var(--green)':'var(--red)'}">{{ f.perf.week_1 }}%</b></span>
             <span>近1月: <b :style="{color:f.perf.month_1>=0?'var(--green)':'var(--red)'}">{{ f.perf.month_1 }}%</b></span>
-            <span>排名: <b>{{ f.perf.rank }}/{{ f.perf.total_funds }}</b></span>
+            <span>排名: <b :style="{color:f.perf.rank_pct<=20?'var(--green)':f.perf.rank_pct<=50?'var(--amber)':'var(--red)'}">{{ f.perf.category }} {{ f.perf.rank }}/{{ f.perf.total_funds }} (前{{ f.perf.rank_pct }}%)</b></span>
           </div>
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
             <span v-for="d in f.direction" :key="d" class="badge badge-blue" style="font-size:10px">{{ d }}</span>
@@ -159,8 +159,12 @@ async function batchImport() {
   const codes = batchText.value.trim().split(/[\n,，\s]+/).filter(c => c.length === 6)
   if (!codes.length) return
   loading.value = true
-  const items = codes.map(c => ({ code: c, name: "" }))
-  portfolio.value = await api.analyzeHoldings(items)
+  try {
+    const items = codes.map(c => ({ code: c, name: "" }))
+    portfolio.value = await api.batchImport(items)
+  } catch (e) {
+    console.error("批量导入失败", e)
+  }
   loading.value = false
 }
 </script>
