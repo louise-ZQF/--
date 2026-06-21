@@ -51,7 +51,7 @@ def classify_region_by_name(name: str, code: str = "") -> str:
     return "cn"
 
 def region_label(region: str) -> str:
-    return {"cn":"🇨🇳 A股","hk":"🇭🇰 港股","us":"🇺🇸 美股","jp":"🇯🇵 日本","kr":"🇰🇷 韩国","overseas":"🌍 海外","all":"全部"}.get(region, region)
+    return {"cn":"A股","hk":"港股","us":"美股","jp":"日本","kr":"韩国","overseas":"海外","all":"全部"}.get(region, region)
 
 def screen_4433_by_region(region: str = "all"):
     """按地区筛选：先分地区，再在各地区内做4433。"""

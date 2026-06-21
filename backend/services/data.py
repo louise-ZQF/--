@@ -89,13 +89,13 @@ def get_short_term_perf(code: str) -> dict:
             return {}
         row = match.iloc[0]
         return {
-            "排名": int(row.get("序号", 0)),
-            "日涨幅": str(row.get("日增长率", "")),
-            "近1周": str(row.get("近1周", "")),
-            "近1月": str(row.get("近1月", "")),
-            "近3月": str(row.get("近3月", "")),
-            "净值": str(row.get("单位净值", "")),
-            "总基金数": int(len(df)),
+            "rank": int(row.get("序号", 0)),
+            "daily": str(row.get("日增长率", "")),
+            "week_1": str(row.get("近1周", "")),
+            "month_1": str(row.get("近1月", "")),
+            "month_3": str(row.get("近3月", "")),
+            "nav": str(row.get("单位净值", "")),
+            "total_funds": int(len(df)),
         }
     except Exception:
         return {}

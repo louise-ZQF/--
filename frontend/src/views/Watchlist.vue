@@ -47,25 +47,25 @@
               <span>近1月: <b :style="{color: s.perf.month_1 >= 0 ? 'var(--green)' : 'var(--red)'}">{{ s.perf.month_1 }}%</b></span>
               <span>净值: <b>{{ s.perf.nav }}</b></span>
             </div>
-            <div v-if="s.holdings_summary?.region_distribution" style="margin-bottom:10px">
+            <div v-if="s.holdings_summary?.['地域分布']" style="margin-bottom:10px">
               <div style="display:flex;gap:4px;height:8px;border-radius:4px;overflow:hidden;margin-bottom:4px">
-                <div v-for="reg in s.holdings_summary.region_distribution" :key="reg.market"
+                <div v-for="reg in regionToArray(s.holdings_summary['地域分布'])" :key="reg.market"
                   :style="{width: reg.percent + '%', backgroundColor: reg.market === 'A股' ? '#ef4444' : reg.market === '港股' ? '#10b981' : reg.market === '美股' ? '#3b82f6' : '#6b7280', minWidth: reg.percent > 0 ? '2px' : '0'}">
                 </div>
               </div>
               <div style="display:flex;flex-wrap:wrap;gap:4px 12px">
-                <span v-for="reg in s.holdings_summary.region_distribution" :key="reg.market" style="font-size:11px;color:var(--ink-secondary)">
+                <span v-for="reg in regionToArray(s.holdings_summary['地域分布'])" :key="reg.market" style="font-size:11px;color:var(--ink-secondary)">
                   <span :style="{color: reg.market === 'A股' ? '#ef4444' : reg.market === '港股' ? '#10b981' : reg.market === '美股' ? '#3b82f6' : '#6b7280', fontWeight:600}">●</span>
                   {{ reg.market }} {{ reg.percent }}%
                 </span>
               </div>
             </div>
-            <div v-if="s.holdings_summary?.top_holdings?.length">
+            <div v-if="s.holdings_summary?.['前5持仓']?.length">
               <div style="font-size:11px;color:var(--ink-secondary);margin-bottom:4px">前5大持仓</div>
-              <div v-for="(h, i) in s.holdings_summary.top_holdings.slice(0,5)" :key="i" style="display:flex;align-items:center;gap:8px;padding:2px 0">
-                <span style="flex:1;font-size:12px">{{ h.name }}</span>
-                <span style="font-size:11px;color:var(--ink-secondary)">{{ h.percent }}%</span>
-                <span v-if="h.market" class="badge" :style="{fontSize:'9px',padding:'1px 5px',backgroundColor: h.market === 'A股' ? '#fef2f2' : h.market === '港股' ? '#ecfdf5' : h.market === '美股' ? '#eff6ff' : '#f3f4f6', color: h.market === 'A股' ? '#dc2626' : h.market === '港股' ? '#059669' : h.market === '美股' ? '#2563eb' : '#4b5563'}">{{ h.market }}</span>
+              <div v-for="(h, i) in s.holdings_summary['前5持仓'].slice(0,5)" :key="i" style="display:flex;align-items:center;gap:8px;padding:2px 0">
+                <span style="flex:1;font-size:12px">{{ h['名称'] }}</span>
+                <span style="font-size:11px;color:var(--ink-secondary)">{{ h['占比'] }}%</span>
+                <span v-if="h['市场']" class="badge" :style="{fontSize:'9px',padding:'1px 5px',backgroundColor: h['市场'] === 'A股' ? '#fef2f2' : h['市场'] === '港股' ? '#ecfdf5' : h['市场'] === '美股' ? '#eff6ff' : '#f3f4f6', color: h['市场'] === 'A股' ? '#dc2626' : h['市场'] === '港股' ? '#059669' : h['市场'] === '美股' ? '#2563eb' : '#4b5563'}">{{ h['市场'] }}</span>
               </div>
             </div>
           </div>
@@ -145,5 +145,10 @@ async function checkSignals() {
   loading.value = true
   signals.value = await api.watchSignal()
   loading.value = false
+}
+
+function regionToArray(regionObj: Record<string, number> | undefined): { market: string; percent: number }[] {
+  if (!regionObj) return []
+  return Object.entries(regionObj).map(([market, percent]) => ({ market, percent }))
 }
 </script>
