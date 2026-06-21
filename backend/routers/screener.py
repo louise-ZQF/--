@@ -113,8 +113,12 @@ def screen_full(region: str = Query("all"), with_timing: bool = True):
 
 @router.get("/score")
 def score(code: str):
+    from services.data import get_fund_overview, get_fund_manager_info, get_fund_risk_data
     result = score_fund(code)
     result["direction"] = get_fund_direction(code)
+    result["overview"] = get_fund_overview(code)
+    result["manager"] = get_fund_manager_info(code)
+    result["risk"] = get_fund_risk_data(code)
     return result
 
 @router.get("/direction")
