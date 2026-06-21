@@ -30,12 +30,13 @@ def _fetch_html(url: str, timeout: int = 8) -> Optional[str]:
 
 @cached(ttl=86400)
 def get_fund_direction(code: str) -> list:
-    """获取基金投资方向（基于持仓关键词）。"""
+    """获取基金投资方向（基于持仓关键词，复用 get_full_holdings 缓存）。"""
     try:
-        holdings = ak.fund_portfolio_hold_em(symbol=code, date="2025")
-        if holdings is None or holdings.empty:
+        holdings_data = get_full_holdings(code)
+        holdings = holdings_data.get("持仓", [])
+        if not holdings:
             return ["暂无数据"]
-        names = " ".join(holdings["股票名称"].astype(str).tolist()[:10])
+        names = " ".join(h.get("名称", "") for h in holdings[:10])
         tags = {
             "CPO/光模块": ["中际旭创","新易盛","天孚通信","光库科技","源杰科技"],
             "AI算力": ["寒武纪","海光信息","浪潮信息","中科曙光","工业富联"],
@@ -123,14 +124,29 @@ def get_short_term_perf(code: str) -> dict:
             (["股票"], "股票型"),
             (["混合"], "混合型"),
         ]
-        category = "全部"
+        category = ""
         for keywords, sym in _CATEGORY_MAP:
             if any(kw in fund_type for kw in keywords):
                 category = sym
                 break
-        df = _get_category_rank(category)
+        if category:
+            df = _get_category_rank(category)
 
     if df.empty:
+        # 不拉全市场，只返回收益数据不包含排名
+        try:
+            all_df = get_rank()
+            match = all_df[all_df["基金代码"].astype(str) == str(code)]
+            if not match.empty:
+                row = match.iloc[0]
+                return {
+                    "rank": 0, "daily": str(row.get("日增长率", "")),
+                    "week_1": str(row.get("近1周", "")), "month_1": str(row.get("近1月", "")),
+                    "month_3": str(row.get("近3月", "")), "nav": str(row.get("单位净值", "")),
+                    "total_funds": 0, "category": "未知", "rank_pct": 0,
+                }
+        except:
+            pass
         return {}
 
     try:
@@ -293,7 +309,7 @@ def get_full_holdings(code: str) -> dict:
             "总占比": round(sum(r["占比"] for r in holdings), 2),
         }
     except Exception:
-        return {"holdings": [], "region_breakdown": {}}
+        return {"持仓": [], "地域分布": {}, "总占比": 0, "季度": ""}
 
 
 # ── FundCrawler 模式：天天基金 HTML 页面抓取 ────────────────────

@@ -40,6 +40,8 @@
           <div class="label">{{ f.fund_type }} · {{ f.region }}</div>
           <div style="font-size:16px;font-weight:600;margin:4px 0">{{ f.name }}</div>
           <div style="font-size:12px;color:var(--ink-secondary);margin-bottom:8px">{{ f.code }}</div>
+          <div v-if="f.error" style="color:#dc2626;font-size:13px;padding:6px 0;background:#fef2f2;border-radius:4px;margin-bottom:8px">⚠ {{ f.error }}</div>
+          <template v-else>
           <div v-if="f.perf" style="display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--ink-secondary);margin-bottom:8px">
             <span>日涨幅: <b :style="{color:f.perf.daily>=0?'var(--green)':'var(--red)'}">{{ f.perf.daily }}%</b></span>
             <span>近1周: <b :style="{color:f.perf.week_1>=0?'var(--green)':'var(--red)'}">{{ f.perf.week_1 }}%</b></span>
@@ -62,7 +64,7 @@
             <span>波动率 {{ (f.risk.annual_volatility*100)?.toFixed(1) }}%</span>
             <span>Calmar {{ f.risk.calmar_ratio?.toFixed(2) }}</span>
           </div>
-        </div>
+        </template>
       </div>
     </div>
 
@@ -175,8 +177,20 @@ async function batchImport() {
   loading.value = true
   try {
     const items = codes.map(c => ({ code: c.trim(), name: "" }))
-    portfolio.value = await api.batchImport(items)
-    importSuccess.value = "已导入 " + codes.length + " 只基金，分析完成"
+    // Step 1: 快速存库
+    const saveResult = await api.batchImport(items)
+    importSuccess.value = "已保存 " + saveResult.count + " 只基金，正在分析..."
+
+    // Step 2: 分析（可能较慢，但后端已并行优化）
+    portfolio.value = await api.analyzeHoldings(items)
+
+    // 检查是否有部分基金失败
+    const errors = portfolio.value.funds?.filter((f: any) => f.error)
+    if (errors?.length) {
+      importError.value = errors.length + " 只基金分析失败: " + errors.map((e: any) => e.code + " " + e.error).join(", ")
+    }
+
+    importSuccess.value = "已导入 " + saveResult.count + " 只基金，分析完成"
     batchText.value = ""
   } catch (e: any) {
     importError.value = "导入失败: " + (e?.message || e?.toString?.() || "未知错误")
