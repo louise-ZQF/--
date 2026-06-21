@@ -1,111 +1,117 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from services.data import get_nav, get_fund_direction
-from services.metrics import max_drawdown, nav_percentile, trend_ma
+from typing import List
 
 router = APIRouter()
 
-class HoldingItem(BaseModel):
+class HoldItem(BaseModel):
     code: str
-    cost: float = 0.0
-    shares: float = 0.0
     name: str = ""
-
-class BatchImportItem(BaseModel):
-    code: str
-    cost: float = 0.0
-    dca_daily: float = 0.0
-    name: str = ""
-
-def classify_region(code: str, name: str = "") -> str:
-    if "QDII" in name.upper() or "海外" in name or "全球" in name:
-        return "海外"
-    if "港股" in name or "恒生" in name or "香港" in name:
-        return "港股"
-    return "A股"
 
 @router.post("/analyze")
-def analyze(items: list[HoldingItem]):
-    analyzed = [
-        {"code": h.code, "cost": h.cost, "shares": h.shares, "name": h.name}
-        for h in items
-    ]
-    return analyze_and_advise(analyzed)
+def analyze(items: List[HoldItem]):
+    """分析持仓：方向 + 主动/被动建议。"""
+    from services.data import get_nav, get_all_funds
+    from services.metrics import nav_percentile, trend_ma, rsi, max_drawdown
+    from services.direction import get_fund_direction
+    from services.score import classify_region_by_name, region_label
 
-def analyze_and_advise(items: list):
+    # Get fund names
+    try:
+        all_funds = get_all_funds()
+        name_map = {}
+        for _, row in all_funds.iterrows():
+            name_map[str(row.get("基金代码",""))] = str(row.get("基金简称",""))
+    except: name_map = {}
+
+    # Classify active vs passive
+    passive_keywords = ["ETF","指数","联接","纳斯达克","标普","沪深300","中证500","创业板","科创"]
+
     out = []
     for h in items:
-        code = h.get("code", "")
-        name = h.get("name", "")
+        code = h.code
+        name = name_map.get(code, h.name or code)
+        region = classify_region_by_name(name)
+
+        # Active vs Passive
+        is_passive = any(kw in name for kw in passive_keywords)
+        fund_type = "被动指数" if is_passive else "主动管理"
+
+        # Get nav for analysis
         df = get_nav(code)
         if df.empty:
-            out.append({"code": code, "error": "无净值数据"})
+            out.append({"code":code,"name":name,"fund_type":fund_type,"region":region_label(region),
+                       "direction":get_fund_direction(code),"error":"无净值数据"})
             continue
+
         nav = df["nav"]
-        cur = float(nav.iloc[-1])
-        cost = h.get("cost", 0)
-        ret = cur / cost - 1 if cost > 0 else 0.0
-        mdd = max_drawdown(nav.tail(252))
         pct = nav_percentile(nav)
         tr = trend_ma(nav)
-        region = classify_region(code, name)
-        directions = get_fund_direction(code)
+        r = rsi(nav)
+        mdd = max_drawdown(nav.tail(252))
+        ret_1m = float(nav.iloc[-1]/nav.iloc[-22]-1) if len(nav)>=22 else 0
+        ret_3m = float(nav.iloc[-1]/nav.iloc[-66]-1) if len(nav)>=66 else 0
 
-        if pct < 0.25 and tr == "向上":
-            dca_advice = "📈 加大定投"
-            dca_reason = f"估值低位(分位{pct:.0%})+趋势向上，是定投黄金期"
-        elif pct < 0.25:
-            dca_advice = "✅ 保持定投"
-            dca_reason = f"估值低位(分位{pct:.0%})，虽然趋势{tr}，但定投性价比高"
+        # Passive vs Active recommendation based on market conditions
+        if pct < 0.30:
+            advice = "📈 当前估值偏低，被动指数基金定投性价比高"
+            passive_score = 85
         elif pct < 0.50:
-            dca_advice = "✅ 保持定投"
-            dca_reason = f"估值中性(分位{pct:.0%})，趋势{tr}，维持原节奏"
-        elif pct < 0.75:
-            dca_advice = "⚠️ 降低定投"
-            dca_reason = f"估值偏高(分位{pct:.0%})，建议降低定投金额"
-        elif tr == "向下":
-            dca_advice = "⏸️ 暂停定投"
-            dca_reason = f"估值高位(分位{pct:.0%})+趋势向下，暂停等待更好时机"
+            advice = "✅ 估值中性，被动+主动均可配置"
+            passive_score = 65
+        elif pct < 0.70:
+            advice = "⚠️ 估值偏高，主动基金选股能力可能更有优势"
+            passive_score = 40
         else:
-            dca_advice = "⚠️ 降低定投"
-            dca_reason = f"估值高位(分位{pct:.0%})，降低定投等待回调"
+            advice = "🔴 估值高位，建议精选主动基金或等回调再配置被动"
+            passive_score = 20
 
         out.append({
             "code": code, "name": name,
-            "current_nav": round(cur, 4),
-            "return": round(ret, 4), "max_drawdown": round(mdd, 4),
-            "percentile": round(pct, 4), "trend": tr,
-            "dca_advice": dca_advice, "dca_reason": dca_reason,
-            "region": region, "directions": directions,
+            "fund_type": fund_type, "region": region_label(region),
+            "direction": get_fund_direction(code),
+            "percentile": round(pct, 2), "rsi": round(r, 0),
+            "trend": tr, "max_drawdown": round(mdd, 2),
+            "ret_1m": round(ret_1m, 3), "ret_3m": round(ret_3m, 3),
+            "passive_score": passive_score,
+            "advice": advice,
         })
-    return out
 
-@router.post("/batch-import")
-def batch_import(items: list[BatchImportItem]):
-    from db import save_holding, conn as db_conn
-    c = db_conn()
-    c.execute("CREATE TABLE IF NOT EXISTS dca_plan(code TEXT PRIMARY KEY, daily_amount REAL, enabled INTEGER DEFAULT 1)")
-    for h in items:
-        region = classify_region(h.code, h.name)
-        save_holding(h.code, h.cost, 0, h.name, region)
-        c.execute("INSERT OR REPLACE INTO dca_plan VALUES(?,?,1)", (h.code, h.dca_daily))
-    c.commit(); c.close()
-    analyzed = [
-        {"code": h.code, "cost": h.cost, "shares": 0, "name": h.name}
-        for h in items
-    ]
-    return analyze_and_advise(analyzed)
+    # Portfolio-level summary
+    passive_count = sum(1 for o in out if o.get("fund_type")=="被动指数")
+    active_count = len(out) - passive_count
+    avg_pct = sum(o.get("percentile",0.5) for o in out) / max(len(out),1)
+
+    if avg_pct < 0.35:
+        portfolio_advice = "📈 整体估值偏低，建议增加被动指数配置，享受市场回升"
+    elif avg_pct < 0.55:
+        portfolio_advice = "✅ 估值中性，被动主动均衡配置"
+    else:
+        portfolio_advice = "⚠️ 整体估值偏高，建议适当降低被动比例，转向精选主动基金"
+
+    return {
+        "funds": out,
+        "summary": {
+            "total": len(out), "passive_count": passive_count, "active_count": active_count,
+            "avg_percentile": round(avg_pct, 2),
+            "portfolio_advice": portfolio_advice,
+            "directions": list(set(d for o in out for d in o.get("direction",[])))[:5],
+        }
+    }
 
 @router.get("/list")
 def list_holdings():
     from db import list_holdings as lh
     return lh()
 
+class SaveItem(BaseModel):
+    code: str
+    name: str = ""
+
 @router.post("/save")
-def save(item: HoldingItem):
+def save(item: SaveItem):
     from db import save_holding
-    region = classify_region(item.code, item.name)
-    save_holding(item.code, item.cost, item.shares, item.name, region)
+    save_holding(item.code, item.name)
     return {"ok": True}
 
 @router.delete("/del")
@@ -113,3 +119,12 @@ def remove(code: str):
     from db import del_holding
     del_holding(code)
     return {"ok": True}
+
+@router.post("/batch-import")
+def batch_import(items: List[SaveItem]):
+    """批量导入：只填代码即可。"""
+    from db import save_holding, list_holdings
+    for h in items:
+        save_holding(h.code, h.name)
+    # Auto-analyze
+    return analyze([HoldItem(code=h.code, name=h.name) for h in items])
