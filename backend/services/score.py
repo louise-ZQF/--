@@ -99,7 +99,10 @@ def screen_4433_by_region(region: str = "all"):
     except Exception:
         return []
 
-def get_fund_direction(code: str) -> list:
+from services.direction import get_fund_direction
+
+
+def _old_get_fund_direction(code: str) -> list:
     """获取基金投资方向标签。"""
     try:
         import akshare as ak
