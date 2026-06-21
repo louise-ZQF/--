@@ -51,7 +51,7 @@
     <div v-if="results.length">
       <div class="stat-grid">
         <div class="stat-card" v-for="r in results" :key="r.code">
-          <div class="label">{{ r.name || r.code }} <span style="font-size:11px;color:var(--muted);margin-left:8px">{{ r.code }}</span></div>
+          <div class="label">{{ r.name || r.code }} <span style="font-size:11px;color:var(--ink-secondary);margin-left:8px">{{ r.code }}</span></div>
           <div class="value" :style="{color: r.return > 0 ? 'var(--green)' : 'var(--red)'}">
             {{ (r.return*100).toFixed(1) }}%
           </div>
@@ -64,6 +64,45 @@
           <div style="display:flex;gap:12px;margin-top:8px;font-size:12px">
             <span>📊 估值分位: {{ (r.percentile*100).toFixed(0) }}%</span>
             <span>📈 趋势: {{ r.trend }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 仓位配比建议 (合并至此) -->
+      <div class="card" v-if="results.length >= 2" style="margin-top:20px">
+        <h3 style="font-size:17px;font-weight:600;margin-bottom:4px">⚖️ 仓位配比建议</h3>
+        <p style="font-size:13px;color:var(--ink-secondary);margin-bottom:16px">基于当前持仓的最优权重分配</p>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
+          <select v-model="optMethod" style="width:180px">
+            <option value="max_sharpe">最大夏普比率</option>
+            <option value="min_var">最小方差</option>
+            <option value="risk_parity">风险平价</option>
+          </select>
+          <button class="btn btn-primary" @click="runOptimize" :disabled="optLoading">
+            {{ optLoading ? '计算中…' : '🎯 计算最优配比' }}
+          </button>
+        </div>
+        <div v-if="optResult && !optResult.error">
+          <div class="stat-grid" style="margin-bottom:12px">
+            <div class="stat-card">
+              <div class="label">预期年化收益</div>
+              <div class="value" style="color:var(--green);font-size:24px">{{ (optResult.expected_return*100).toFixed(2) }}%</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">预期波动</div>
+              <div class="value" style="font-size:24px">{{ (optResult.expected_vol*100).toFixed(2) }}%</div>
+            </div>
+            <div class="stat-card">
+              <div class="label">夏普比率</div>
+              <div class="value" style="color:var(--brand);font-size:24px">{{ optResult.sharpe }}</div>
+            </div>
+          </div>
+          <div v-for="(w, code) in optResult.weights" :key="code" style="display:flex;align-items:center;gap:12px;margin:8px 0">
+            <span style="width:100px;font-size:13px;font-weight:500">{{ code }}</span>
+            <div style="flex:1;height:20px;background:#f0f0f3;border-radius:10px;overflow:hidden">
+              <div :style="{width:(w*100)+'%',height:'100%',background:'linear-gradient(90deg, #0071e3, #40a9ff)',borderRadius:'10px',transition:'width .6s cubic-bezier(0.25,0.1,0.25,1)'}"></div>
+            </div>
+            <span style="font-weight:600;width:50px;text-align:right;font-size:13px">{{ (w*100).toFixed(1) }}%</span>
           </div>
         </div>
       </div>
@@ -90,6 +129,9 @@ const batchText = ref("")
 const holdings = ref<any[]>([])
 const results = ref<any[]>([])
 const loading = ref(false)
+const optMethod = ref("max_sharpe")
+const optResult = ref<any>(null)
+const optLoading = ref(false)
 
 onMounted(async () => { holdings.value = await api.listHoldings() })
 
@@ -109,6 +151,14 @@ async function analyze() {
   loading.value = true
   results.value = await api.analyzeHoldings(holdings.value)
   loading.value = false
+}
+
+async function runOptimize() {
+  const codes = results.value.map((r: any) => r.code).filter(Boolean)
+  if (codes.length < 2) return
+  optLoading.value = true
+  optResult.value = await api.optimize(codes, optMethod.value)
+  optLoading.value = false
 }
 
 async function batchImport() {
