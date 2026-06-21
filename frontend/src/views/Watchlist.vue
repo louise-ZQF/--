@@ -53,6 +53,19 @@
         <div class="desc">添加你关注的基金，智能监控买入时机</div>
       </div>
     </div>
+
+    <div class="card" style="margin-top:20px">
+      <details style="cursor:pointer">
+        <summary style="font-weight:600;font-size:15px;margin-bottom:12px">📖 术语解释</summary>
+        <div style="font-size:13px;color:var(--ink-secondary);line-height:1.8;padding-top:8px">
+          <p><b>估值偏低(分位&lt;35%)</b>：当前净值处于近3年较低位置，买入性价比相对较高。</p>
+          <p><b>已回调(距高点&lt;-10%)</b>：基金净值从近1年最高点回落超过10%，出现像样回调。</p>
+          <p><b>未超买(RSI&lt;60)</b>：短期未出现过热，买入后短期回调风险相对可控。</p>
+          <p><b>趋势非向下</b>：中期均线未持续走低，避免在下跌趋势中接飞刀。</p>
+          <p><b>四维判断</b>：四项条件全部满足=✅可考虑买入。任一不满足=暂不建议，等条件改善。</p>
+        </div>
+      </details>
+    </div>
   </div>
 </template>
 

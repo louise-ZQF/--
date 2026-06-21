@@ -67,6 +67,18 @@
     <div class="card" v-if="!results.length && !loading && !scoreResult">
       <div class="empty-state"><div class="icon">🔍</div><div class="title">点击"4433 筛选"查看精选基金</div></div>
     </div>
+
+    <div class="card" style="margin-top:20px">
+      <details style="cursor:pointer">
+        <summary style="font-weight:600;font-size:15px;margin-bottom:12px">📖 术语解释</summary>
+        <div style="font-size:13px;color:var(--ink-secondary);line-height:1.8;padding-top:8px">
+          <p><b>4433法则</b>：经典选基规则。近1/2/3年+今年来收益排同类前1/4，近6月+近3月排前1/3。</p>
+          <p><b>郑希6维评分</b>：基于基金经理郑希公开投资方法的6维度评估（景气方向、低位弹性、全球视野、流动性、周期拼接、业绩印证）。评分越高=越符合景气度投资框架。</p>
+          <p><b>买入时机</b>：综合估值分位+趋势+RSI判断当前是否适合买入。</p>
+          <p><b>投资方向</b>：根据基金持仓股票自动标注的行业/主题标签。</p>
+        </div>
+      </details>
+    </div>
   </div>
 </template>
 <script setup lang="ts">

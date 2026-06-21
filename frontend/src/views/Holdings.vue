@@ -52,6 +52,21 @@
     <div class="card" v-if="!portfolio.funds?.length && !loading">
       <div class="empty-state"><div class="icon">💼</div><div class="title">导入你的持仓</div><div class="desc">粘贴基金代码，智能分析投资方向与配置建议</div></div>
     </div>
+
+    <div class="card" style="margin-top:20px">
+      <details style="cursor:pointer">
+        <summary style="font-weight:600;font-size:15px;margin-bottom:12px">📖 术语解释</summary>
+        <div style="font-size:13px;color:var(--ink-secondary);line-height:1.8;padding-top:8px">
+          <p><b>估值分位</b>：当前净值在近3年历史中的位置。分位越低=越便宜，定投性价比越高。分位100%=历史最高点。</p>
+          <p><b>RSI</b>：相对强弱指标，0-100。RSI&gt;70表示短期过热（超买），RSI&lt;30表示短期过冷（超卖）。</p>
+          <p><b>趋势</b>：60日均线方向。向上=中期趋势向好，向下=中期趋势偏弱。</p>
+          <p><b>被动指数基金</b>：跟踪某个指数（如纳斯达克100、沪深300），费率低、透明度高。</p>
+          <p><b>主动管理基金</b>：由基金经理主动选股，目标是战胜基准指数。</p>
+          <p><b>被动/主动评分</b>：基于当前市场估值，判断被动指数和主动基金哪个更适合配置。高分=被动更优，低分=主动更优。</p>
+          <p><b>投资方向</b>：根据基金前十大持仓股票，自动标注基金主要投资的行业/主题。</p>
+        </div>
+      </details>
+    </div>
   </div>
 </template>
 

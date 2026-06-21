@@ -62,6 +62,44 @@ def get_all_funds() -> pd.DataFrame:
         return pd.DataFrame()
 
 @cached(ttl=86400)
+def get_fund_name(code: str) -> str:
+    """获取基金名称（多源回退）。"""
+    # Source 1: akshare
+    try:
+        df = get_all_funds()
+        if not df.empty:
+            match = df[df["基金代码"].astype(str) == str(code)]
+            if not match.empty:
+                return str(match.iloc[0]["基金简称"])
+    except: pass
+
+    # Source 2: pingzhongdata JS
+    try:
+        import urllib.request, re
+        url = f"http://fund.eastmoney.com/pingzhongdata/{code}.js"
+        req = urllib.request.Request(url, headers={"Referer":"http://fund.eastmoney.com/","User-Agent":"Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            text = resp.read().decode("utf-8","replace")
+        m = re.search(r'fS_name\s*=\s*"([^"]+)"', text)
+        if m: return m.group(1)
+    except: pass
+
+    # Source 3: realtime API
+    try:
+        import urllib.request, re, json
+        url = f"http://fundgz.1234567.com.cn/js/{code}.js"
+        req = urllib.request.Request(url, headers={"Referer":"http://fund.eastmoney.com/","User-Agent":"Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            text = resp.read().decode("utf-8","replace")
+        m = re.search(r'jsonpgz\((\{.*\})\)', text)
+        if m:
+            data = json.loads(m.group(1))
+            return data.get("name", code)
+    except: pass
+
+    return code
+
+@cached(ttl=86400)
 def get_fund_info(code: str) -> dict:
     """基金基本信息(雪球)。"""
     try:
