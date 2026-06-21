@@ -16,6 +16,13 @@
 
     <div v-if="loading" class="loading">分析中…</div>
 
+    <div v-if="importError" class="card" style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;font-size:13px;padding:12px">
+      {{ importError }}
+    </div>
+    <div v-if="importSuccess" class="card" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#16a34a;font-size:13px;padding:12px">
+      {{ importSuccess }}
+    </div>
+
     <!-- Portfolio Summary -->
     <div v-if="portfolio.summary" class="card">
       <div class="stat-grid">
@@ -154,15 +161,25 @@ import { api } from "../api"
 const batchText = ref("")
 const portfolio = ref<any>({})
 const loading = ref(false)
+const importError = ref("")
+const importSuccess = ref("")
 
 async function batchImport() {
-  const codes = batchText.value.trim().split(/[\n,，\s]+/).filter(c => c.length === 6)
-  if (!codes.length) return
+  importError.value = ""
+  importSuccess.value = ""
+  const codes = batchText.value.trim().split(/[\n,，\s]+/).filter(c => c.length >= 5)
+  if (!codes.length) {
+    importError.value = "未检测到有效基金代码（需要5-6位数字）"
+    return
+  }
   loading.value = true
   try {
-    const items = codes.map(c => ({ code: c, name: "" }))
+    const items = codes.map(c => ({ code: c.trim(), name: "" }))
     portfolio.value = await api.batchImport(items)
-  } catch (e) {
+    importSuccess.value = "已导入 " + codes.length + " 只基金，分析完成"
+    batchText.value = ""
+  } catch (e: any) {
+    importError.value = "导入失败: " + (e?.message || e?.toString?.() || "未知错误")
     console.error("批量导入失败", e)
   }
   loading.value = false
