@@ -98,27 +98,38 @@ def _get_category_rank(category: str):
 
 @cached(ttl=3600)
 def get_short_term_perf(code: str) -> dict:
-    """获取短期行情：日增长率、近1周、近1月、同类排名（分类内排名）。"""
+    """获取短期行情：日增长率、近1周、近1月、同类排名（分类内排名）。
+
+    排名策略：
+    1) 优先将 fund_type（如"混合型-偏股"）直接作为 akshare symbol
+    2) 若 akshare 不支持子分类，退回到宽泛分类
+    3) 退回时按"近1月"收益率排序计算 rank_pct，使排名有意义
+    """
     overview = get_fund_overview(code)
     fund_type = overview.get("fund_type", "")
 
-    # 映射 EastMoney 基金类型到 akshare 分类 symbol
-    _CATEGORY_MAP = [
-        (["QDII"], "QDII"),
-        (["FOF"], "FOF"),
-        (["货币"], "货币型"),
-        (["债券"], "债券型"),
-        (["指数"], "指数型"),
-        (["股票"], "股票型"),
-        (["混合"], "混合型"),
-    ]
-    category = "全部"
-    for keywords, sym in _CATEGORY_MAP:
-        if any(kw in fund_type for kw in keywords):
-            category = sym
-            break
+    # Step 1: 尝试直接用 fund_type 作为 akshare symbol（如"混合型-偏股"）
+    df = _get_category_rank(fund_type) if fund_type else pd.DataFrame()
+    category = fund_type
 
-    df = _get_category_rank(category)
+    # Step 2: 退回 — 映射到 akshare 支持的宽泛分类
+    if df.empty:
+        _CATEGORY_MAP = [
+            (["QDII"], "QDII"),
+            (["FOF"], "FOF"),
+            (["货币"], "货币型"),
+            (["债券"], "债券型"),
+            (["指数"], "指数型"),
+            (["股票"], "股票型"),
+            (["混合"], "混合型"),
+        ]
+        category = "全部"
+        for keywords, sym in _CATEGORY_MAP:
+            if any(kw in fund_type for kw in keywords):
+                category = sym
+                break
+        df = _get_category_rank(category)
+
     if df.empty:
         return {}
 
@@ -127,16 +138,35 @@ def get_short_term_perf(code: str) -> dict:
         if match.empty:
             return {}
         row = match.iloc[0]
+
+        # 若直接用 fund_type 成功，"序号"就是子分类内排名
+        if category == fund_type:
+            rank = int(row.get("序号", 0))
+            total = int(len(df))
+            rank_pct = round(rank / max(total, 1) * 100, 1)
+        else:
+            # 退回：按"近1月"收益率排序计算排名（比"序号"更有意义）
+            sort_col = "近1月"
+            if sort_col not in df.columns:
+                sort_col = "日增长率"
+            df_sorted = df.copy()
+            df_sorted[sort_col] = pd.to_numeric(df_sorted[sort_col], errors="coerce")
+            df_sorted = df_sorted.sort_values(sort_col, ascending=False).reset_index(drop=True)
+            positions = df_sorted[df_sorted["基金代码"].astype(str) == str(code)].index.tolist()
+            rank = positions[0] + 1 if positions else 0
+            total = int(len(df_sorted))
+            rank_pct = round(rank / max(total, 1) * 100, 1)
+
         return {
-            "rank": int(row.get("序号", 0)),
+            "rank": rank,
             "daily": str(row.get("日增长率", "")),
             "week_1": str(row.get("近1周", "")),
             "month_1": str(row.get("近1月", "")),
             "month_3": str(row.get("近3月", "")),
             "nav": str(row.get("单位净值", "")),
-            "total_funds": int(len(df)),
+            "total_funds": total,
             "category": category,
-            "rank_pct": round(int(row.get("序号", 0)) / max(int(len(df)), 1) * 100, 1),
+            "rank_pct": rank_pct,
         }
     except Exception:
         return {}

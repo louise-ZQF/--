@@ -4,19 +4,17 @@
     <p class="page-subtitle">4433法则选基 · 经理风格评分</p>
 
     <div class="card">
-      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-        <button v-for="r in regions" :key="r.value"
-          class="btn" :class="{'btn-primary': selectedRegion===r.value}"
-          @click="switchRegion(r.value)">
-          {{ r.label }}
-        </button>
-      </div>
       <div style="display:flex;gap:10px;align-items:flex-end">
         <button class="btn btn-primary" @click="fetchAll" :disabled="loading">{{ loading ? '加载中…' : '刷新' }}</button>
         <div style="flex:1"></div>
         <input v-model="scoreCode" placeholder="代码评分" style="width:140px">
         <button class="btn" @click="score" :disabled="scoring">{{ scoring ? '评分中…' : '评分' }}</button>
       </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:12px;margin-top:8px">
+      <button class="btn" :class="{'btn-primary': selectedRegionFilter==='china'}" @click="toggleRegionFilter('china')">中国</button>
+      <button class="btn" :class="{'btn-primary': selectedRegionFilter==='overseas'}" @click="toggleRegionFilter('overseas')">海外</button>
     </div>
 
     <div v-if="loading" class="loading">正在加载基金数据…</div>
@@ -97,13 +95,8 @@ import { ref, onMounted } from "vue"
 import { api } from "../api"
 const allResults = ref<any[]>([]), filteredResults = ref<any[]>([]), loading = ref(false)
 const scoreCode = ref(""), scoreResult = ref<any>(null), scoring = ref(false)
-const selectedRegion = ref("all")
+const selectedRegionFilter = ref<string | null>(null)
 const watchlistCodes = ref<Set<string>>(new Set())
-const regions = [
-  {value:"all", label:"全部"},
-  {value:"china", label:"中国(A股+港股)"},
-  {value:"overseas", label:"海外(美股+日韩)"},
-]
 onMounted(async () => {
   fetchAll()
   try {
@@ -119,16 +112,16 @@ async function fetchAll() {
   loading.value = false
 }
 function applyFilter() {
-  if (selectedRegion.value === "all") {
+  if (selectedRegionFilter.value === null) {
     filteredResults.value = allResults.value
-  } else if (selectedRegion.value === "china") {
+  } else if (selectedRegionFilter.value === "china") {
     filteredResults.value = allResults.value.filter((r:any) => ["cn","hk"].includes(r.region))
-  } else if (selectedRegion.value === "overseas") {
+  } else if (selectedRegionFilter.value === "overseas") {
     filteredResults.value = allResults.value.filter((r:any) => ["us","jp","kr"].includes(r.region))
   }
 }
-function switchRegion(r: string) {
-  selectedRegion.value = r
+function toggleRegionFilter(r: string) {
+  selectedRegionFilter.value = selectedRegionFilter.value === r ? null : r
   applyFilter()
 }
 async function score() { scoring.value = true; scoreResult.value = await api.scoreFund(scoreCode.value); scoring.value = false }
