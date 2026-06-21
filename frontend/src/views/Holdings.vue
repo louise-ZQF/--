@@ -67,6 +67,7 @@
         </template>
       </div>
     </div>
+  </div>
 
     <!-- Empty -->
     <div class="card" v-if="!portfolio.funds?.length && !loading">
