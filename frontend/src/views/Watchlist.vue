@@ -36,6 +36,22 @@
             <span :style="{color: check.pass ? 'var(--green)' : 'var(--red)'}">{{ check.value }}</span>
           </div>
         </div>
+
+        <!-- FundCrawler enriched overview -->
+        <details v-if="s.overview?.fund_type || s.manager?.manager_name" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);cursor:pointer">
+          <summary style="font-size:12px;color:var(--muted);font-weight:500">📊 基金概况（天天基金数据）</summary>
+          <div style="font-size:12px;color:var(--ink-secondary);display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;padding-top:8px">
+            <template v-if="s.overview?.fund_type"><span>类型</span><b>{{ s.overview.fund_type }}</b></template>
+            <template v-if="s.overview?.fund_size"><span>规模</span><b>{{ s.overview.fund_size }}亿</b></template>
+            <template v-if="s.overview?.fund_company"><span>基金公司</span><b>{{ s.overview.fund_company }}</b></template>
+            <template v-if="s.overview?.fund_value"><span>单位净值</span><b>{{ s.overview.fund_value }}</b></template>
+            <template v-if="s.overview?.management_fee"><span>管理费率</span><b>{{ s.overview.management_fee }}</b></template>
+            <template v-if="s.overview?.custody_fee"><span>托管费率</span><b>{{ s.overview.custody_fee }}</b></template>
+            <template v-if="s.manager?.manager_name"><span>基金经理</span><b>{{ s.manager.manager_name }}（{{ s.manager.appointment_date }}上任）</b></template>
+            <template v-if="s.risk?.stddev_3y"><span>近3年波动</span><b>{{ s.risk.stddev_3y }}</b></template>
+            <template v-if="s.risk?.sharpe_3y"><span>近3年夏普</span><b>{{ s.risk.sharpe_3y }}</b></template>
+          </div>
+        </details>
       </div>
     </div>
 

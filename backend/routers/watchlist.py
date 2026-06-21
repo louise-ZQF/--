@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from services.data import get_nav, get_all_funds
+from services.data import get_nav, get_all_funds, get_fund_overview, get_fund_manager_info, get_fund_risk_data
 from services.metrics import nav_percentile, trend_ma, rsi
 from db import add_watch, list_watch, del_watch
 
@@ -64,5 +64,9 @@ def signal():
             "checks": {k: {"pass": v["pass"], "value": v["value"]} for k, v in checks.items()},
             "percentile": round(pct, 2), "drawdown": round(dd, 2),
             "rsi": round(r, 0), "trend": tr,
+            # FundCrawler enriched data
+            "overview": get_fund_overview(code),
+            "manager": get_fund_manager_info(code),
+            "risk": get_fund_risk_data(code),
         })
     return res
