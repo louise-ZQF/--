@@ -1,10 +1,34 @@
 """持仓管理：分析、导入、增删。"""
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+import math
+
+def _sanitize(obj):
+    """递归替换 nan/inf 为 0，确保 JSON 可序列化。"""
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return 0.0
+    return obj
+
+
+def _safe(default, fn, *args, **kwargs):
+    """调用 fn(*args, **kwargs)，异常时返回 default 并记录日志。"""
+    try:
+        return fn(*args, **kwargs)
+    except Exception:
+        logger.exception("分析维度 %s 失败，回退默认值", getattr(fn, "__name__", fn))
+        return default
 
 
 class HoldItem(BaseModel):
@@ -193,17 +217,37 @@ def analyze(items: List[HoldItem]):
     else:
         portfolio_advice = "整体估值偏高，建议适当降低被动比例，转向精选主动基金"
 
-    # --- 5 analysis dimensions ---
-    concentration = _analyze_concentration(items, name_map)
-    correlation = _analyze_correlation(nav_data, items, name_map)
-    valuation = _analyze_valuation(valid_out)
-    risk_metrics = _portfolio_risk_metrics(nav_data, items)
-    suggestions = _generate_suggestions(concentration, correlation, valuation, valid_out, name_map)
+    # --- 5 analysis dimensions (each wrapped for resilience) ---
+    empty_conc = {"top3_pct": 0, "top5_pct": 0, "level": "未知", "overlap_warning": None}
+    concentration = _safe(empty_conc, _analyze_concentration, items, name_map)
+
+    empty_corr = {"avg_correlation": 0, "high_pairs": []}
+    correlation = _safe(empty_corr, _analyze_correlation, nav_data, items, name_map)
+
+    empty_val = {"avg_percentile": 0, "level": "未知", "advice": ""}
+    valuation = _safe(empty_val, _analyze_valuation, valid_out)
+
+    empty_risk = {"portfolio_volatility": 0, "portfolio_sharpe": 0, "portfolio_max_drawdown": 0}
+    risk_metrics = _safe(empty_risk, _portfolio_risk_metrics, nav_data, items)
+
+    suggestions = _safe([], _generate_suggestions, concentration, correlation, valuation, valid_out, name_map)
+
+    # 清理 nan/inf —— JSON 无法序列化，会导致 500
+    out = _sanitize(out)
+    concentration = _sanitize(concentration)
+    correlation = _sanitize(correlation)
+    valuation = _sanitize(valuation)
+    risk_metrics = _sanitize(risk_metrics)
+    suggestions = _sanitize(suggestions)
+
+    failed_count = sum(1 for o in out if o.get("error"))
 
     return {
         "funds": out,
         "summary": {
             "total": len(out),
+            "analyzed_count": len(out) - failed_count,
+            "failed_count": failed_count,
             "passive_count": passive_count,
             "active_count": active_count,
             "avg_percentile": round(avg_pct, 2),
@@ -296,6 +340,8 @@ def _analyze_correlation(nav_data: dict, items: List[HoldItem], name_map: dict) 
         if df is None or df.empty:
             continue
         nav = df.set_index("date")["nav"]
+        # 去重：akshare 数据偶尔有重复日期，pandas 对齐时会抛 InvalidIndexError
+        nav = nav[~nav.index.duplicated(keep="last")]
         rets = nav.pct_change().dropna()
         if len(rets) < 10:
             continue
@@ -367,7 +413,9 @@ def _portfolio_risk_metrics(nav_data: dict, items: List[HoldItem]) -> dict:
         df = nav_data.get(code)
         if df is None or df.empty:
             continue
-        nav_series[code] = df.set_index("date")["nav"]
+        nav = df.set_index("date")["nav"]
+        nav = nav[~nav.index.duplicated(keep="last")]
+        nav_series[code] = nav
 
     if len(nav_series) < 1:
         return {"portfolio_volatility": 0, "portfolio_sharpe": 0, "portfolio_max_drawdown": 0}

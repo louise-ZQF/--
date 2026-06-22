@@ -26,14 +26,19 @@ def annual_return(nav: pd.Series) -> float:
     """年化收益率。"""
     if len(nav) < 2:
         return 0.0
-    total = nav.iloc[-1] / nav.iloc[0] - 1
+    first = nav.iloc[0]
+    if first == 0 or pd.isna(first):
+        return 0.0
+    total = nav.iloc[-1] / first - 1
+    if total <= -1:
+        return -1.0
     try:
         days = (nav.index[-1] - nav.index[0]).days
     except AttributeError:
         days = len(nav) - 1
     days = days or 1
-    if total <= -1:
-        return -1.0
+    if total < 0 and days > 365:
+        return float(total)
     return float((1 + total) ** (365 / days) - 1)
 
 def annual_volatility(rets: pd.Series) -> float:
