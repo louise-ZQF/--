@@ -237,9 +237,28 @@ def _analyze_asset_allocation(items, name_map):
                 result["现金"] += float(row.get("现金占净值比例",0) or 0)
                 result["其他"] += float(row.get("其他占净值比例",0) or 0)
                 count += 1
-        except Exception: pass
+        except Exception:
+            pass
     if count > 0:
         for k in result: result[k] = round(result[k]/count, 1)
+    else:
+        # Fallback: infer from fund type keywords
+        stock_count = 0; bond_count = 0
+        for h in items:
+            name = name_map.get(h.code, "")
+            if any(kw in name for kw in ["债券","纯债","国债","信用债","可转债","债基"]):
+                result["债券"] += 90; result["股票"] += 5; result["现金"] += 3; result["其他"] += 2
+                bond_count += 1
+            elif any(kw in name for kw in ["货币","现金"]):
+                result["现金"] += 95; result["债券"] += 5
+                bond_count += 1
+            else:
+                # Stock/equity/hybrid/QDII → assume ~90% equity
+                result["股票"] += 90; result["现金"] += 7; result["其他"] += 3
+                stock_count += 1
+            count += 1
+        if count > 0:
+            for k in result: result[k] = round(result[k]/count, 1)
     return {"allocation":result, "fund_count":count, "advice":_asset_advice(result)}
 
 

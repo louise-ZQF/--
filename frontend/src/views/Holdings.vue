@@ -133,28 +133,34 @@
       </div>
       <div v-if="portfolio.asset_allocation" class="card" style="margin-top:12px">
         <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">资产配置</h3>
-        <div style="display:flex;gap:12px;height:12px;border-radius:6px;overflow:hidden;margin-bottom:6px">
-          <div :style="{width:portfolio.asset_allocation.allocation.股票+'%', backgroundColor:'#ef4444', minWidth:'2px'}"></div>
-          <div :style="{width:portfolio.asset_allocation.allocation.债券+'%', backgroundColor:'#3b82f6', minWidth:'2px'}"></div>
-          <div :style="{width:portfolio.asset_allocation.allocation.现金+'%', backgroundColor:'#10b981', minWidth:'2px'}"></div>
-          <div :style="{width:portfolio.asset_allocation.allocation.其他+'%', backgroundColor:'#6b7280', minWidth:'2px'}"></div>
-        </div>
-        <div style="display:flex;gap:16px;font-size:12px">
-          <span><span style="color:#ef4444;font-weight:600">●</span> 股票 {{ portfolio.asset_allocation.allocation.股票 }}%</span>
-          <span><span style="color:#3b82f6;font-weight:600">●</span> 债券 {{ portfolio.asset_allocation.allocation.债券 }}%</span>
-          <span><span style="color:#10b981;font-weight:600">●</span> 现金 {{ portfolio.asset_allocation.allocation.现金 }}%</span>
-          <span><span style="color:#6b7280;font-weight:600">●</span> 其他 {{ portfolio.asset_allocation.allocation.其他 }}%</span>
-        </div>
+        <template v-if="portfolio.asset_allocation.allocation.股票 === 0 && portfolio.asset_allocation.allocation.债券 === 0">
+          <div style="padding:12px 0;font-size:13px;color:var(--ink-secondary)">暂无资产配置数据披露</div>
+        </template>
+        <template v-else>
+          <div style="display:flex;gap:12px;height:12px;border-radius:6px;overflow:hidden;margin-bottom:6px">
+            <div :style="{width:portfolio.asset_allocation.allocation.股票+'%', backgroundColor:'#ef4444', minWidth:'2px'}"></div>
+            <div :style="{width:portfolio.asset_allocation.allocation.债券+'%', backgroundColor:'#3b82f6', minWidth:'2px'}"></div>
+            <div :style="{width:portfolio.asset_allocation.allocation.现金+'%', backgroundColor:'#10b981', minWidth:'2px'}"></div>
+            <div :style="{width:portfolio.asset_allocation.allocation.其他+'%', backgroundColor:'#6b7280', minWidth:'2px'}"></div>
+          </div>
+          <div style="display:flex;gap:16px;font-size:12px">
+            <span><span style="color:#ef4444;font-weight:600">●</span> 股票 {{ portfolio.asset_allocation.allocation.股票 }}%</span>
+            <span><span style="color:#3b82f6;font-weight:600">●</span> 债券 {{ portfolio.asset_allocation.allocation.债券 }}%</span>
+            <span><span style="color:#10b981;font-weight:600">●</span> 现金 {{ portfolio.asset_allocation.allocation.现金 }}%</span>
+            <span><span style="color:#6b7280;font-weight:600">●</span> 其他 {{ portfolio.asset_allocation.allocation.其他 }}%</span>
+          </div>
+        </template>
         <div v-if="portfolio.asset_allocation.advice" class="advice-box advice-info" style="margin-top:8px;font-size:12px">{{ portfolio.asset_allocation.advice }}</div>
       </div>
       <div v-if="portfolio.region_allocation" class="card" style="margin-top:12px">
         <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">地区配置</h3>
         <div style="display:flex;gap:16px;font-size:13px;flex-wrap:wrap">
-          <span v-for="(pct, region) in portfolio.region_allocation" :key="region">
+          <span v-for="(pct, region) in portfolio.region_allocation.allocation" :key="region">
             <span :style="{color: region==='A股'?'#ef4444':region==='港股'?'#10b981':region==='美股'?'#3b82f6':'#6b7280',fontWeight:600}">●</span>
             {{ region }} <b>{{ pct }}%</b>
           </span>
         </div>
+        <div style="font-size:11px;color:var(--ink-secondary);margin-top:4px">基于 {{ portfolio.region_allocation.fund_count }} 只基金的前十大持仓汇总</div>
       </div>
       <div v-if="portfolio.sector_allocation?.length" class="card" style="margin-top:12px">
         <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">行业配置（前5）</h3>
