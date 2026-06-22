@@ -22,6 +22,7 @@
 const menu = [
   { path: "/holdings", icon: "", label: "持仓" },
   { path: "/watchlist", icon: "", label: "自选" },
+  { path: "/realtime", icon: "", label: "实时" },
   { path: "/screener", icon: "", label: "筛选" },
 ]
 </script>

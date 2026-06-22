@@ -24,4 +24,5 @@ export const api = {
   ask: (question:string,code?:string) => http.post("/ai/chat",{question,code}).then(r=>r.data),
   // 持仓成分
   fundHoldings: (code:string) => http.get('/fund/holdings', {params:{code}}).then(r=>r.data),
+  realtime: (filter:string='all') => http.get('/realtime', {params:{filter}}).then(r=>r.data),
 }

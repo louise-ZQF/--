@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter
 from services.data import get_nav, get_all_funds, get_fund_overview, get_fund_manager_info, get_fund_risk_data, get_short_term_perf, get_full_holdings
 from services.metrics import nav_percentile, trend_ma, rsi
+from services.evaluate import evaluate_fund
 from db import add_watch, list_watch, del_watch
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,13 @@ def signal():
     每只基金通过 ThreadPoolExecutor 并行处理（max_workers=5），
     单只基金的网络请求失败不会导致整体崩溃。
     """
+    from services.snapshot import get_snapshot, set_snapshot
+
+    cache_key = "watchlist:signal"
+    cached = get_snapshot(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         all_funds = get_all_funds()
         name_map = {}
@@ -92,6 +100,8 @@ def signal():
         except Exception: perf = {}
         try: holdings_summary = _build_holdings_summary(code)
         except Exception: holdings_summary = {}
+        try: evaluation = evaluate_fund(code, name)
+        except Exception: evaluation = {}
 
         return {
             "code": code, "name": name, "can_buy": can_buy,
@@ -101,7 +111,7 @@ def signal():
             "percentile": round(pct, 2), "drawdown": round(dd, 2),
             "rsi": round(r, 0), "trend": tr,
             "overview": overview, "manager": manager, "risk": risk,
-            "perf": perf, "holdings_summary": holdings_summary,
+            "perf": perf, "holdings_summary": holdings_summary, "evaluation": evaluation,
         }
 
     res = []
@@ -120,6 +130,8 @@ def signal():
 
     code_order = {w["code"]: i for i, w in enumerate(watchlist)}
     res.sort(key=lambda o: code_order.get(o["code"], 999))
+    res.sort(key=lambda o: (o.get("code", "999999")))
+    set_snapshot(cache_key, res)
     return res
 
 

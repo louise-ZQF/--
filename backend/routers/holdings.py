@@ -41,6 +41,7 @@ def analyze(items: List[HoldItem]):
                                    annual_volatility, sharpe_ratio, sortino_ratio, calmar_ratio)
     from services.direction import get_fund_direction
     from services.score import classify_region_by_name, region_label
+    from services.evaluate import evaluate_fund
     import pandas as pd
 
     try:
@@ -89,9 +90,11 @@ def analyze(items: List[HoldItem]):
         except Exception: direction = ["暂无数据"]
         try: perf = get_short_term_perf(code)
         except Exception: perf = {}
+        try: evaluation = evaluate_fund(code, name)
+        except Exception: evaluation = {}
         return {"code":code, "name":name, "fund_type":fund_type, "region":region_label(region), "direction":direction,
                 "percentile":round(pct,2), "rsi":round(r_val,0), "trend":tr, "max_drawdown":round(mdd,2),
-                "ret_1m":round(ret_1m,3), "ret_3m":round(ret_3m,3), "passive_score":passive_score, "advice":advice, "perf":perf,
+                "ret_1m":round(ret_1m,3), "ret_3m":round(ret_3m,3), "passive_score":passive_score, "advice":advice, "perf":perf, "evaluation":evaluation,
                 "risk":{"annual_volatility":round(ann_vol,4), "sharpe_ratio":round(sharpe,4), "sortino_ratio":round(sortino,4), "calmar_ratio":round(calmar_val,4), "max_drawdown":round(fund_mdd_full,4)}}
 
     with ThreadPoolExecutor(max_workers=5) as executor:

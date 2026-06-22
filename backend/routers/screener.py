@@ -4,6 +4,7 @@ from fastapi import APIRouter, Query
 from services.score import screen_4433_by_region, score_fund, classify_region_by_name
 from services.direction import get_fund_direction
 from services.data import get_short_term_perf
+from services.evaluate import evaluate_fund
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -77,11 +78,15 @@ def zhengxi_timing(code: str, fund_name: str = "") -> dict:
         signal, label, color = "avoid", "暂不建议", "#ef4444"
         advice = "当前不满足郑希框架的买入标准。关注趋势反转信号。"
 
+    try: evaluation = evaluate_fund(code, fund_name)
+    except Exception: evaluation = {}
+
     return {
         "signal": signal, "label": label, "color": color,
         "score": score, "max_score": 100,
         "advice": advice,
         "checks": checks,
+        "evaluation": evaluation,
         "summary": f"郑希6维评分: {score}/100 · {label}",
     }
 
@@ -100,6 +105,13 @@ def screen(region: str = Query("all", description="all|china|overseas|us|hk|cn")
 @router.get("/4433-full")
 def screen_full(region: str = Query("all"), with_timing: bool = True):
     """完整筛选：4433 + 买入时机 + 方向。并行处理（max_workers=5）。"""
+    from services.snapshot import get_snapshot, set_snapshot
+
+    cache_key = "screener:4433-full:" + str(region) + ":" + str(with_timing)
+    cached = get_snapshot(cache_key)
+    if cached is not None:
+        return cached
+
     results = screen_4433_by_region(region)
 
     def process_one(r):
@@ -131,7 +143,9 @@ def screen_full(region: str = Query("all"), with_timing: bool = True):
                 out.append((idx, {**r, "code": code, "direction": [], "perf": {}, "error": str(exc)}))
 
     out.sort(key=lambda x: x[0])
-    return [item for _, item in out]
+    result_list = [item for _, item in out]
+    set_snapshot(cache_key, result_list)
+    return result_list
 
 
 @router.get("/score")
@@ -153,3 +167,17 @@ def direction(code: str):
         "direction": get_fund_direction(code),
         "region": classify_region_by_name("", code) or "unknown",
     }
+
+
+@router.post("/refresh-cache")
+def refresh_cache():
+    """强制刷新快照缓存。"""
+    try:
+        import sqlite3
+        from db import DB
+        with sqlite3.connect(DB) as conn:
+            conn.execute("DELETE FROM snapshot")
+            conn.commit()
+        return {"ok": True, "message": "缓存已清除，下次请求将重新计算"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

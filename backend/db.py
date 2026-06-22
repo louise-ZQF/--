@@ -8,6 +8,7 @@ def init_db():
     c = conn(); cur = c.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS watch(code TEXT PRIMARY KEY)")
     cur.execute("CREATE TABLE IF NOT EXISTS holding(code TEXT PRIMARY KEY, name TEXT DEFAULT '')")
+    cur.execute("CREATE TABLE IF NOT EXISTS snapshot (key TEXT PRIMARY KEY, json TEXT, updated_at REAL)")
     c.commit(); c.close()
 
 def add_watch(code):

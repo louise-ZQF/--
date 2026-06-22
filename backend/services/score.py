@@ -80,7 +80,9 @@ def screen_4433_by_region(region: str = "all"):
                     top(sub_df["ytd"], 0.25) & top(sub_df["m6"], 1 / 3) & top(sub_df["m3"], 1 / 3))
             keep = ["基金代码", "基金简称", "y1", "y2", "y3", "m6", "m3", "_region", "_region_label"]
             keep = [c for c in keep if c in sub_df.columns]
-            result = sub_df[mask][keep].head(n).to_dict(orient="records")
+            result = sub_df[mask][keep].sort_values(
+                by=["y1", "基金代码"], ascending=[False, True]
+            ).head(n).to_dict(orient="records")
             for r in result:
                 r["region"] = r.pop("_region", "")
                 r["region_label"] = r.pop("_region_label", "")
