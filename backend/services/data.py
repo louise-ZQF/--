@@ -258,6 +258,25 @@ def get_index_daily(code: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def classify_market(stock_code: str, stock_name: str) -> str:
+    """分层规则判断股票所属市场。"""
+    import re
+    code = str(stock_code).strip().upper()
+    name = str(stock_name)
+    if code.isdigit():
+        if len(code) == 6: return "A股"
+        if len(code) == 5: return "港股"
+    if re.fullmatch(r"[A-Z]{1,5}(\.[A-Z])?", code): return "美股"
+    US_NAMES = {"苹果","微软","英伟达","谷歌","亚马逊","Meta","特斯拉","台积电","博通",
+                "Apple","Microsoft","NVIDIA","Amazon","Tesla","Netflix","AMD"}
+    if any(k in name for k in US_NAMES): return "美股"
+    OVERSEAS_KW = {"越南":"越南","印度":"印度","日经":"日本","日本":"日本",
+                   "德国":"德国","纳斯达克":"美股","标普":"美股","恒生":"港股"}
+    for kw, region in OVERSEAS_KW.items():
+        if kw in name: return region
+    if name.endswith("-W") or name.endswith("-S") or "-SW" in name: return "港股"
+    return "其他"
+
 @cached(ttl=86400)
 def get_full_holdings(code: str) -> dict:
     """获取基金全部持仓 + 地域分布比例。"""
@@ -280,7 +299,7 @@ def get_full_holdings(code: str) -> dict:
         latest = df[df["季度"] == latest_quarter].copy()
 
         holdings = []
-        region_pct = {"A股": 0.0, "港股": 0.0, "美股": 0.0, "其他": 0.0}
+        region_pct = {"A股": 0.0, "港股": 0.0, "美股": 0.0, "日本": 0.0, "越南": 0.0, "印度": 0.0, "德国": 0.0, "其他": 0.0}
 
         for _, row in latest.iterrows():
             stock_code = str(row.get("股票代码", ""))
@@ -288,16 +307,7 @@ def get_full_holdings(code: str) -> dict:
             pct = float(row.get("占净值比例", 0))
 
             # 判断市场
-            if len(stock_code) == 6 and stock_code.isdigit():
-                market = "A股"
-            elif len(stock_code) == 5 and stock_code.startswith("0"):
-                market = "港股"
-            elif any(kw in stock_name for kw in ["苹果","微软","英伟达","谷歌","亚马逊","Meta","特斯拉","NVIDIA","Apple","Microsoft","Amazon"]):
-                market = "美股"
-            elif "-" in stock_name or any(kw in stock_name.upper() for kw in ["-S","-W","-SW"]):
-                market = "港股"
-            else:
-                market = "其他"
+            market = classify_market(stock_code, stock_name)
 
             holdings.append({
                 "代码": stock_code,

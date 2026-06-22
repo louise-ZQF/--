@@ -60,6 +60,7 @@
                 @click="addToWatch(f)">加自选</button>
               <span v-else style="font-size:11px;color:var(--muted)">已添加</span>
             </td>
+            <td><FundHoldings :code="f['基金代码']||f.code" /></td>
           </tr>
         </tbody>
       </table>
@@ -93,6 +94,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { api } from "../api"
+import FundHoldings from "../components/FundHoldings.vue"
 const allResults = ref<any[]>([]), filteredResults = ref<any[]>([]), loading = ref(false)
 const scoreCode = ref(""), scoreResult = ref<any>(null), scoring = ref(false)
 const selectedRegionFilter = ref<string | null>(null)

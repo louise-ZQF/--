@@ -22,4 +22,6 @@ export const api = {
   dca: (code:string,amount:number,freq:string) => http.post("/backtest/dca",{code,amount,freq}).then(r=>r.data),
   // AI
   ask: (question:string,code?:string) => http.post("/ai/chat",{question,code}).then(r=>r.data),
+  // 持仓成分
+  fundHoldings: (code:string) => http.get('/fund/holdings', {params:{code}}).then(r=>r.data),
 }

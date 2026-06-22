@@ -64,6 +64,7 @@
             <span>波动率 {{ (f.risk.annual_volatility*100)?.toFixed(1) }}%</span>
             <span>Calmar {{ f.risk.calmar_ratio?.toFixed(2) }}</span>
           </div>
+          <FundHoldings :code="f.code" />
         </template>
       </div>
     </div>
@@ -75,7 +76,7 @@
     </div>
 
     <!-- New Analysis Dimensions -->
-    <div v-if="portfolio.concentration || portfolio.correlation || portfolio.suggestions?.length" style="margin-top:16px">
+    <div v-if="portfolio.concentration || portfolio.suggestions?.length" style="margin-top:16px">
 
       <!-- Concentration + Valuation -->
       <div v-if="portfolio.concentration" class="card">
@@ -121,14 +122,6 @@
         </div>
       </div>
 
-      <!-- Correlation -->
-      <div v-if="portfolio.correlation?.high_pairs?.length" class="card" style="margin-top:12px">
-        <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">相关性风险</h3>
-        <div style="font-size:12px;color:var(--ink-secondary);margin-bottom:8px">平均相关性 {{ portfolio.correlation.avg_correlation?.toFixed(2) }}</div>
-        <div v-for="p in portfolio.correlation.high_pairs" :key="p.fund_a+p.fund_b" class="advice-box advice-wait" style="margin-bottom:6px">
-          {{ p.warning }}（{{ p.correlation }}）
-        </div>
-      </div>
 
       <!-- Suggestions -->
       <div v-if="portfolio.suggestions?.length" class="card" style="margin-top:12px">
@@ -136,6 +129,61 @@
         <div v-for="(s,i) in portfolio.suggestions" :key="i" style="display:flex;gap:8px;padding:6px 0;font-size:13px;border-bottom:1px solid var(--line)">
           <span style="color:var(--brand);font-weight:600;min-width:20px">{{ i+1 }}.</span>
           <span>{{ s }}</span>
+        </div>
+      </div>
+      <div v-if="portfolio.asset_allocation" class="card" style="margin-top:12px">
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">资产配置</h3>
+        <div style="display:flex;gap:12px;height:12px;border-radius:6px;overflow:hidden;margin-bottom:6px">
+          <div :style="{width:portfolio.asset_allocation.allocation.股票+'%', backgroundColor:'#ef4444', minWidth:'2px'}"></div>
+          <div :style="{width:portfolio.asset_allocation.allocation.债券+'%', backgroundColor:'#3b82f6', minWidth:'2px'}"></div>
+          <div :style="{width:portfolio.asset_allocation.allocation.现金+'%', backgroundColor:'#10b981', minWidth:'2px'}"></div>
+          <div :style="{width:portfolio.asset_allocation.allocation.其他+'%', backgroundColor:'#6b7280', minWidth:'2px'}"></div>
+        </div>
+        <div style="display:flex;gap:16px;font-size:12px">
+          <span><span style="color:#ef4444;font-weight:600">●</span> 股票 {{ portfolio.asset_allocation.allocation.股票 }}%</span>
+          <span><span style="color:#3b82f6;font-weight:600">●</span> 债券 {{ portfolio.asset_allocation.allocation.债券 }}%</span>
+          <span><span style="color:#10b981;font-weight:600">●</span> 现金 {{ portfolio.asset_allocation.allocation.现金 }}%</span>
+          <span><span style="color:#6b7280;font-weight:600">●</span> 其他 {{ portfolio.asset_allocation.allocation.其他 }}%</span>
+        </div>
+        <div v-if="portfolio.asset_allocation.advice" class="advice-box advice-info" style="margin-top:8px;font-size:12px">{{ portfolio.asset_allocation.advice }}</div>
+      </div>
+      <div v-if="portfolio.region_allocation" class="card" style="margin-top:12px">
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">地区配置</h3>
+        <div style="display:flex;gap:16px;font-size:13px;flex-wrap:wrap">
+          <span v-for="(pct, region) in portfolio.region_allocation" :key="region">
+            <span :style="{color: region==='A股'?'#ef4444':region==='港股'?'#10b981':region==='美股'?'#3b82f6':'#6b7280',fontWeight:600}">●</span>
+            {{ region }} <b>{{ pct }}%</b>
+          </span>
+        </div>
+      </div>
+      <div v-if="portfolio.sector_allocation?.length" class="card" style="margin-top:12px">
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">行业配置（前5）</h3>
+        <div v-for="s in portfolio.sector_allocation" :key="s.行业" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="font-size:12px;min-width:60px">{{ s.行业 }}</span>
+          <div style="flex:1;height:6px;background:var(--line);border-radius:3px;overflow:hidden">
+            <div :style="{width:s.占比+'%', backgroundColor:'var(--brand)', height:'100%'}"></div>
+          </div>
+          <span style="font-size:11px;color:var(--ink-secondary)">{{ s.占比 }}%</span>
+        </div>
+      </div>
+      <div v-if="portfolio.actions?.length" class="card" style="margin-top:12px">
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:10px">调仓建议</h3>
+        <div v-for="(a,i) in portfolio.actions" :key="i" style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">
+          <span class="badge" :style="{fontSize:'10px',padding:'2px 6px',backgroundColor: a.action==='减持'?'#fef2f2':a.action==='加仓'?'#f0fdf4':a.action==='新增类别'?'#eff6ff':'#fffbeb', color: a.action==='减持'?'#dc2626':a.action==='加仓'?'#16a34a':a.action==='新增类别'?'#2563eb':'#d97706'}">{{ a.action }}</span>
+          <div style="flex:1">
+            <div style="font-weight:500">{{ a.target }}</div>
+            <div style="font-size:11px;color:var(--ink-secondary);margin-top:2px">{{ a.reason }}</div>
+          </div>
+        </div>
+      </div>
+      <div v-if="portfolio.risk_grade" class="card" style="margin-top:12px">
+        <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">组合风险评级</h3>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="font-size:32px;font-weight:800" :style="{color: portfolio.risk_grade.level==='高'?'var(--red)':portfolio.risk_grade.level==='中'?'var(--amber)':'var(--green)'}">{{ portfolio.risk_grade.level }}</div>
+          <div style="font-size:12px;color:var(--ink-secondary)">
+            <div>年化波动率 {{ (portfolio.risk_grade.volatility*100).toFixed(1) }}%</div>
+            <div>最大回撤 {{ (portfolio.risk_grade.max_drawdown*100).toFixed(1) }}%</div>
+          </div>
         </div>
       </div>
     </div>
@@ -159,6 +207,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue"
+import FundHoldings from "../components/FundHoldings.vue"
 import { api } from "../api"
 
 const batchText = ref("")

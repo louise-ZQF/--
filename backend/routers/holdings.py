@@ -12,7 +12,6 @@ router = APIRouter()
 import math
 
 def _sanitize(obj):
-    """递归替换 nan/inf 为 0，确保 JSON 可序列化。"""
     if isinstance(obj, dict):
         return {k: _sanitize(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -23,7 +22,6 @@ def _sanitize(obj):
 
 
 def _safe(default, fn, *args, **kwargs):
-    """调用 fn(*args, **kwargs)，异常时返回 default 并记录日志。"""
     try:
         return fn(*args, **kwargs)
     except Exception:
@@ -36,19 +34,8 @@ class HoldItem(BaseModel):
     name: str = ""
 
 
-# ======================================================================
-# Core Analyze Endpoint (parallel per-fund processing)
-# ======================================================================
-
-
 @router.post("/analyze")
 def analyze(items: List[HoldItem]):
-    """分析持仓：方向 + 主动/被动建议 + 集中度/相关性/风险/估值/改进建议。
-
-    每只基金的处理通过 ThreadPoolExecutor 并行执行（max_workers=5），
-    单只基金的网络请求失败不会导致整体崩溃，错误信息会暴露在对应基金的
-    ``error`` 字段中。
-    """
     from services.data import get_nav, get_all_funds, get_short_term_perf
     from services.metrics import (nav_percentile, trend_ma, rsi, max_drawdown,
                                    annual_volatility, sharpe_ratio, sortino_ratio, calmar_ratio)
@@ -56,7 +43,6 @@ def analyze(items: List[HoldItem]):
     from services.score import classify_region_by_name, region_label
     import pandas as pd
 
-    # --- Fund name map (single network call, runs before parallel workers) ---
     try:
         all_funds = get_all_funds()
         name_map = {}
@@ -65,45 +51,22 @@ def analyze(items: List[HoldItem]):
     except Exception:
         name_map = {}
 
-    passive_keywords = ["ETF", "指数", "联接", "纳斯达克", "标普",
-                        "沪深300", "中证500", "创业板", "科创"]
-
+    passive_keywords = ["ETF", "指数", "联接", "纳斯达克", "标普", "沪深300", "中证500", "创业板", "科创"]
     out = []
     nav_data = {}
 
-    # --- Per-fund analysis worker (runs in thread pool) ---
     def process_one(h):
-        """处理单只基金 — 在 ThreadPoolExecutor worker 线程中运行。
-
-        所有网络调用 / 计算异常均被捕获并以 ``error`` 字段返回，
-        绝不会向调用方抛出异常。
-        """
         code = h.code
         name = name_map.get(code, h.name or code)
         region = classify_region_by_name(name)
         is_passive = any(kw in name for kw in passive_keywords)
         fund_type = "被动指数" if is_passive else "主动管理"
-
-        try:
-            df = get_nav(code)
-        except Exception:
-            df = pd.DataFrame()
-
+        try: df = get_nav(code)
+        except Exception: df = pd.DataFrame()
         if df.empty:
-            try:
-                direction = get_fund_direction(code)
-            except Exception:
-                direction = ["暂无数据"]
-            return {
-                "code": code,
-                "name": name,
-                "fund_type": fund_type,
-                "region": region_label(region),
-                "direction": direction,
-                "error": "无净值数据",
-                "risk": {},
-            }
-
+            try: direction = get_fund_direction(code)
+            except Exception: direction = ["暂无数据"]
+            return {"code":code, "name":name, "fund_type":fund_type, "region":region_label(region), "direction":direction, "error":"无净值数据", "risk":{}}
         nav = df["nav"]
         pct = nav_percentile(nav)
         tr = trend_ma(nav)
@@ -111,390 +74,263 @@ def analyze(items: List[HoldItem]):
         mdd = max_drawdown(nav.tail(252))
         ret_1m = float(nav.iloc[-1] / nav.iloc[-22] - 1) if len(nav) >= 22 else 0
         ret_3m = float(nav.iloc[-1] / nav.iloc[-66] - 1) if len(nav) >= 66 else 0
-
-        # Enhanced risk metrics per fund
         rets = nav.pct_change().dropna()
         if len(rets) >= 5:
-            ann_vol = annual_volatility(rets)
-            sharpe = sharpe_ratio(rets)
-            sortino = sortino_ratio(rets)
-            calmar_val = calmar_ratio(nav)
+            ann_vol = annual_volatility(rets); sharpe = sharpe_ratio(rets)
+            sortino = sortino_ratio(rets); calmar_val = calmar_ratio(nav)
             fund_mdd_full = max_drawdown(nav)
         else:
             ann_vol = sharpe = sortino = calmar_val = fund_mdd_full = 0.0
+        if pct < 0.30: advice = "当前估值偏低，被动指数基金定投性价比高"; passive_score = 85
+        elif pct < 0.50: advice = "估值中性，被动+主动均可配置"; passive_score = 65
+        elif pct < 0.70: advice = "估值偏高，主动基金选股能力可能更有优势"; passive_score = 40
+        else: advice = "估值高位，建议精选主动基金或等回调再配置被动"; passive_score = 20
+        try: direction = get_fund_direction(code)
+        except Exception: direction = ["暂无数据"]
+        try: perf = get_short_term_perf(code)
+        except Exception: perf = {}
+        return {"code":code, "name":name, "fund_type":fund_type, "region":region_label(region), "direction":direction,
+                "percentile":round(pct,2), "rsi":round(r_val,0), "trend":tr, "max_drawdown":round(mdd,2),
+                "ret_1m":round(ret_1m,3), "ret_3m":round(ret_3m,3), "passive_score":passive_score, "advice":advice, "perf":perf,
+                "risk":{"annual_volatility":round(ann_vol,4), "sharpe_ratio":round(sharpe,4), "sortino_ratio":round(sortino,4), "calmar_ratio":round(calmar_val,4), "max_drawdown":round(fund_mdd_full,4)}}
 
-        # Passive vs Active recommendation
-        if pct < 0.30:
-            advice = "当前估值偏低，被动指数基金定投性价比高"
-            passive_score = 85
-        elif pct < 0.50:
-            advice = "估值中性，被动+主动均可配置"
-            passive_score = 65
-        elif pct < 0.70:
-            advice = "估值偏高，主动基金选股能力可能更有优势"
-            passive_score = 40
-        else:
-            advice = "估值高位，建议精选主动基金或等回调再配置被动"
-            passive_score = 20
-
-        try:
-            direction = get_fund_direction(code)
-        except Exception:
-            direction = ["暂无数据"]
-
-        try:
-            perf = get_short_term_perf(code)
-        except Exception:
-            perf = {}
-
-        return {
-            "code": code,
-            "name": name,
-            "fund_type": fund_type,
-            "region": region_label(region),
-            "direction": direction,
-            "percentile": round(pct, 2),
-            "rsi": round(r_val, 0),
-            "trend": tr,
-            "max_drawdown": round(mdd, 2),
-            "ret_1m": round(ret_1m, 3),
-            "ret_3m": round(ret_3m, 3),
-            "passive_score": passive_score,
-            "advice": advice,
-            "perf": perf,
-            "risk": {
-                "annual_volatility": round(ann_vol, 4),
-                "sharpe_ratio": round(sharpe, 4),
-                "sortino_ratio": round(sortino, 4),
-                "calmar_ratio": round(calmar_val, 4),
-                "max_drawdown": round(fund_mdd_full, 4),
-            },
-        }
-
-    # --- Launch parallel workers ---
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(process_one, h): h for h in items}
         for future in as_completed(futures):
             h = futures[future]
-            try:
-                result = future.result()
+            try: result = future.result()
             except Exception as exc:
-                code = h.code
-                name = name_map.get(code, h.name or code)
-                result = {
-                    "code": code,
-                    "name": name,
-                    "fund_type": "未知",
-                    "region": "未知",
-                    "direction": [],
-                    "error": "处理异常: " + str(exc),
-                    "risk": {},
-                }
+                code = h.code; name = name_map.get(code, h.name or code)
+                result = {"code":code, "name":name, "fund_type":"未知", "region":"未知", "direction":[], "error":"处理异常: "+str(exc), "risk":{}}
             out.append(result)
 
-    # Collect nav_data for downstream helpers (correlation / risk).
     for o in out:
-        code = o["code"]
-        try:
-            nav_data[code] = get_nav(code)
-        except Exception:
-            pass
+        try: nav_data[o["code"]] = get_nav(o["code"])
+        except Exception: pass
 
-    # Restore original input order
     code_order = {h.code: i for i, h in enumerate(items)}
     out.sort(key=lambda o: code_order.get(o["code"], 999))
 
-    # --- Portfolio summary ---
     passive_count = sum(1 for o in out if o.get("fund_type") == "被动指数")
     active_count = len(out) - passive_count
     valid_out = [o for o in out if "error" not in o]
     avg_pct = sum(o.get("percentile", 0.5) for o in valid_out) / max(len(valid_out), 1)
+    if avg_pct < 0.35: portfolio_advice = "整体估值偏低，建议增加被动指数配置，享受市场回升"
+    elif avg_pct < 0.55: portfolio_advice = "估值中性，被动主动均衡配置"
+    else: portfolio_advice = "整体估值偏高，建议适当降低被动比例，转向精选主动基金"
 
-    if avg_pct < 0.35:
-        portfolio_advice = "整体估值偏低，建议增加被动指数配置，享受市场回升"
-    elif avg_pct < 0.55:
-        portfolio_advice = "估值中性，被动主动均衡配置"
-    else:
-        portfolio_advice = "整体估值偏高，建议适当降低被动比例，转向精选主动基金"
-
-    # --- 5 analysis dimensions (each wrapped for resilience) ---
     empty_conc = {"top3_pct": 0, "top5_pct": 0, "level": "未知", "overlap_warning": None}
     concentration = _safe(empty_conc, _analyze_concentration, items, name_map)
-
-    empty_corr = {"avg_correlation": 0, "high_pairs": []}
-    correlation = _safe(empty_corr, _analyze_correlation, nav_data, items, name_map)
-
     empty_val = {"avg_percentile": 0, "level": "未知", "advice": ""}
     valuation = _safe(empty_val, _analyze_valuation, valid_out)
-
     empty_risk = {"portfolio_volatility": 0, "portfolio_sharpe": 0, "portfolio_max_drawdown": 0}
     risk_metrics = _safe(empty_risk, _portfolio_risk_metrics, nav_data, items)
+    empty_asset = {"allocation": {"股票":0,"债券":0,"现金":0,"其他":0}, "fund_count":0, "advice":""}
+    asset_allocation = _safe(empty_asset, _analyze_asset_allocation, items, name_map)
+    empty_region = {"allocation": {}, "fund_count": 0}
+    region_allocation = _safe(empty_region, _analyze_region_allocation, items, name_map)
+    empty_sector = {"top5": [], "fund_count": 0}
+    sector_allocation = _safe(empty_sector, _analyze_sector_allocation, items, name_map)
+    actions = _safe([], _generate_actions, asset_allocation, region_allocation, sector_allocation, concentration, valuation, valid_out, name_map)
+    empty_grade = {"grade":"低", "portfolio_volatility":0, "max_drawdown":0, "top3_concentration":0}
+    risk_grade = _safe(empty_grade, _analyze_risk_grade, risk_metrics, valid_out, concentration)
 
-    suggestions = _safe([], _generate_suggestions, concentration, correlation, valuation, valid_out, name_map)
-
-    # 清理 nan/inf —— JSON 无法序列化，会导致 500
-    out = _sanitize(out)
-    concentration = _sanitize(concentration)
-    correlation = _sanitize(correlation)
-    valuation = _sanitize(valuation)
-    risk_metrics = _sanitize(risk_metrics)
-    suggestions = _sanitize(suggestions)
+    out = _sanitize(out); concentration = _sanitize(concentration); valuation = _sanitize(valuation)
+    risk_metrics = _sanitize(risk_metrics); asset_allocation = _sanitize(asset_allocation)
+    region_allocation = _sanitize(region_allocation); sector_allocation = _sanitize(sector_allocation)
+    actions = _sanitize(actions); risk_grade = _sanitize(risk_grade)
 
     failed_count = sum(1 for o in out if o.get("error"))
-
     return {
         "funds": out,
-        "summary": {
-            "total": len(out),
-            "analyzed_count": len(out) - failed_count,
-            "failed_count": failed_count,
-            "passive_count": passive_count,
-            "active_count": active_count,
-            "avg_percentile": round(avg_pct, 2),
-            "portfolio_advice": portfolio_advice,
-            "directions": list(set(
-                d for o in out for d in o.get("direction", [])
-            ))[:5],
-        },
-        "concentration": concentration,
-        "correlation": correlation,
-        "valuation_health": valuation,
-        "risk_metrics": risk_metrics,
-        "suggestions": suggestions,
+        "summary": {"total": len(out), "analyzed_count": len(out)-failed_count, "failed_count": failed_count,
+                    "passive_count": passive_count, "active_count": active_count,
+                    "avg_percentile": round(avg_pct,2), "portfolio_advice": portfolio_advice,
+                    "directions": list(set(d for o in out for d in o.get("direction",[])))[:5]},
+        "concentration": concentration, "valuation_health": valuation, "risk_metrics": risk_metrics,
+        "asset_allocation": asset_allocation, "region_allocation": region_allocation,
+        "sector_allocation": sector_allocation, "actions": actions, "risk_grade": risk_grade,
     }
 
 
-# ======================================================================
-# Analysis Helper Functions
-# ======================================================================
-
-
-def _analyze_concentration(items: List[HoldItem], name_map: dict) -> dict:
-    """集中度风险：聚合持仓计算前3/前5占比 + 行业方向重叠。"""
+def _analyze_concentration(items, name_map):
     from services.data import get_full_holdings
     from services.direction import _STOCK_SECTOR
-
-    stock_agg = {}
-    sector_funds = {}
-
+    stock_agg = {}; sector_funds = {}
     for h in items:
         code = h.code
-        try:
-            fh = get_full_holdings(code)
-        except Exception:
-            continue
+        try: fh = get_full_holdings(code)
+        except Exception: continue
         holdings = fh.get("持仓", [])
         for s in holdings:
-            scode = str(s.get("代码", ""))
-            sname = str(s.get("名称", ""))
-            spct = float(s.get("占比", 0))
+            scode = str(s.get("代码","")); sname = str(s.get("名称","")); spct = float(s.get("占比",0))
             sector = _STOCK_SECTOR.get(scode, "其他")
-
             key = scode if scode else sname
-            if key not in stock_agg:
-                stock_agg[key] = {"total_weight": 0.0, "funds": set(), "sector": sector, "name": sname}
-            stock_agg[key]["total_weight"] += spct
-            stock_agg[key]["funds"].add(code)
-
-            if sector not in sector_funds:
-                sector_funds[sector] = set()
+            if key not in stock_agg: stock_agg[key] = {"total_weight":0.0, "funds":set(), "sector":sector, "name":sname}
+            stock_agg[key]["total_weight"] += spct; stock_agg[key]["funds"].add(code)
+            if sector not in sector_funds: sector_funds[sector] = set()
             sector_funds[sector].add(code)
-
-    if not stock_agg:
-        return {"top3_pct": 0, "top5_pct": 0, "level": "未知", "overlap_warning": None}
-
+    if not stock_agg: return {"top3_pct":0, "top5_pct":0, "level":"未知", "overlap_warning":None}
     total = sum(d["total_weight"] for d in stock_agg.values()) or 1.0
     sorted_stocks = sorted(stock_agg.values(), key=lambda x: x["total_weight"], reverse=True)
-
     top3_pct = sum(s["total_weight"] for s in sorted_stocks[:3]) / total * 100
     top5_pct = sum(s["total_weight"] for s in sorted_stocks[:5]) / total * 100
-
-    if top3_pct > 60:
-        level = "高风险"
-    elif top3_pct > 30:
-        level = "中等"
-    else:
-        level = "分散"
-
-    overlap_warning = None
-    warnings = []
+    level = "高风险" if top3_pct>60 else ("中等" if top3_pct>30 else "分散")
+    overlap_warning = None; warnings = []
     for sector, fund_codes in sector_funds.items():
         if sector != "其他" and len(fund_codes) >= 2:
-            fund_names = [name_map.get(c, c) for c in sorted(fund_codes)]
+            fund_names = [name_map.get(c,c) for c in sorted(fund_codes)]
             warnings.append("{}方向重叠：{}均重仓该板块".format(sector, "、".join(fund_names[:3])))
-    if warnings:
-        overlap_warning = "；".join(warnings[:2])
-
-    return {"top3_pct": round(top3_pct, 1), "top5_pct": round(top5_pct, 1),
-            "level": level, "overlap_warning": overlap_warning}
+    if warnings: overlap_warning = "；".join(warnings[:2])
+    return {"top3_pct":round(top3_pct,1), "top5_pct":round(top5_pct,1), "level":level, "overlap_warning":overlap_warning}
 
 
-def _analyze_correlation(nav_data: dict, items: List[HoldItem], name_map: dict) -> dict:
-    """相关性分析：基于日收益率计算相关系数矩阵。"""
-    import pandas as pd
-
-    return_series = {}
-    for h in items:
-        code = h.code
-        df = nav_data.get(code)
-        if df is None or df.empty:
-            continue
-        nav = df.set_index("date")["nav"]
-        # 去重：akshare 数据偶尔有重复日期，pandas 对齐时会抛 InvalidIndexError
-        nav = nav[~nav.index.duplicated(keep="last")]
-        rets = nav.pct_change().dropna()
-        if len(rets) < 10:
-            continue
-        return_series[code] = rets
-
-    if len(return_series) < 2:
-        return {"avg_correlation": 0, "high_pairs": []}
-
-    ret_df = pd.DataFrame(return_series).dropna()
-    if ret_df.shape[1] < 2 or ret_df.shape[0] < 5:
-        return {"avg_correlation": 0, "high_pairs": []}
-
-    corr_matrix = ret_df.corr()
-    codes = list(corr_matrix.columns)
-    n = len(codes)
-
-    triu_sum = 0.0
-    triu_count = 0
-    high_pairs = []
-    for i in range(n):
-        for j in range(i + 1, n):
-            cv = float(corr_matrix.iloc[i, j])
-            triu_sum += cv
-            triu_count += 1
-            if cv > 0.85:
-                code_a, code_b = codes[i], codes[j]
-                name_a = name_map.get(code_a, code_a)
-                name_b = name_map.get(code_b, code_b)
-                high_pairs.append({
-                    "fund_a": code_a, "fund_b": code_b,
-                    "correlation": round(cv, 2),
-                    "warning": "{}与{}同涨同跌风险高".format(name_a, name_b),
-                })
-
-    avg_corr = triu_sum / triu_count if triu_count > 0 else 0.0
-    return {"avg_correlation": round(avg_corr, 2), "high_pairs": high_pairs}
-
-
-def _analyze_valuation(valid_out: list) -> dict:
-    """估值健康度：平均净值分位综合评估。"""
+def _analyze_valuation(valid_out):
     percentiles = [o.get("percentile") for o in valid_out if o.get("percentile") is not None]
-    if not percentiles:
-        return {"avg_percentile": 0, "level": "未知", "advice": ""}
-
+    if not percentiles: return {"avg_percentile":0, "level":"未知", "advice":""}
     avg_pct = sum(percentiles) / len(percentiles)
-
-    if avg_pct < 0.20:
-        level, advice = "极度低估", "整体处于极度低估区间，布局性价比极高，建议分批建仓"
-    elif avg_pct < 0.40:
-        level, advice = "低估", "整体估值偏低，定投或分批买入的较好时机"
-    elif avg_pct < 0.60:
-        level, advice = "合理", "整体估值合理，维持现有配置即可"
-    elif avg_pct < 0.80:
-        level, advice = "偏高", "整体估值偏高，建议等待回调或定投建仓"
-    else:
-        level, advice = "高估", "整体估值处于高位，建议适当减仓，控制风险"
-
-    return {"avg_percentile": round(avg_pct, 2), "level": level, "advice": advice}
+    if avg_pct < 0.20: level, advice = "极度低估", "整体处于极度低估区间，布局性价比极高，建议分批建仓"
+    elif avg_pct < 0.40: level, advice = "低估", "整体估值偏低，定投或分批买入的较好时机"
+    elif avg_pct < 0.60: level, advice = "合理", "整体估值合理，维持现有配置即可"
+    elif avg_pct < 0.80: level, advice = "偏高", "整体估值偏高，建议等待回调或定投建仓"
+    else: level, advice = "高估", "整体估值处于高位，建议适当减仓，控制风险"
+    return {"avg_percentile":round(avg_pct,2), "level":level, "advice":advice}
 
 
-def _portfolio_risk_metrics(nav_data: dict, items: List[HoldItem]) -> dict:
-    """组合整体风险指标。"""
+def _portfolio_risk_metrics(nav_data, items):
     import pandas as pd
     from services.metrics import max_drawdown, annual_volatility, sharpe_ratio
-
     nav_series = {}
     for h in items:
-        code = h.code
-        df = nav_data.get(code)
-        if df is None or df.empty:
-            continue
-        nav = df.set_index("date")["nav"]
-        nav = nav[~nav.index.duplicated(keep="last")]
-        nav_series[code] = nav
-
-    if len(nav_series) < 1:
-        return {"portfolio_volatility": 0, "portfolio_sharpe": 0, "portfolio_max_drawdown": 0}
-
+        df = nav_data.get(h.code)
+        if df is None or df.empty: continue
+        nav = df.set_index("date")["nav"]; nav = nav[~nav.index.duplicated(keep="last")]
+        nav_series[h.code] = nav
+    if len(nav_series) < 1: return {"portfolio_volatility":0, "portfolio_sharpe":0, "portfolio_max_drawdown":0}
     nav_df = pd.DataFrame(nav_series).dropna()
-    if nav_df.empty or nav_df.shape[1] < 1:
-        return {"portfolio_volatility": 0, "portfolio_sharpe": 0, "portfolio_max_drawdown": 0}
-
-    nav_df = nav_df / nav_df.iloc[0]
-    port_nav = nav_df.mean(axis=1)
-    rets = port_nav.pct_change().dropna()
-
-    if len(rets) < 5:
-        return {"portfolio_volatility": 0, "portfolio_sharpe": 0, "portfolio_max_drawdown": 0}
-
-    return {
-        "portfolio_volatility": round(annual_volatility(rets), 4),
-        "portfolio_sharpe": round(sharpe_ratio(rets), 4),
-        "portfolio_max_drawdown": round(max_drawdown(port_nav), 4),
-    }
+    if nav_df.empty or nav_df.shape[1] < 1: return {"portfolio_volatility":0, "portfolio_sharpe":0, "portfolio_max_drawdown":0}
+    nav_df = nav_df / nav_df.iloc[0]; port_nav = nav_df.mean(axis=1); rets = port_nav.pct_change().dropna()
+    if len(rets) < 5: return {"portfolio_volatility":0, "portfolio_sharpe":0, "portfolio_max_drawdown":0}
+    return {"portfolio_volatility":round(annual_volatility(rets),4), "portfolio_sharpe":round(sharpe_ratio(rets),4), "portfolio_max_drawdown":round(max_drawdown(port_nav),4)}
 
 
-def _generate_suggestions(concentration: dict, correlation: dict, valuation: dict,
-                          valid_out: list, name_map: dict) -> list:
-    """生成3-5条具体改进建议。"""
-    suggestions = []
+def _asset_advice(allocation):
+    stock = allocation.get("股票", 0)
+    if stock > 90: return "权益占比极高，建议增加债券和现金配置"
+    elif stock > 75: return "权益占比较高，建议配置10-20%债券平衡风险"
+    elif stock < 30: return "权益占比较低，进攻性不足，可考虑增加权益配置"
+    else: return "资产配置较为均衡"
 
-    if concentration.get("level") == "高风险":
-        suggestions.append("前3大持仓占比{}%，集中度过高，建议分散配置降低风险".format(concentration["top3_pct"]))
-    elif concentration.get("level") == "中等":
-        suggestions.append("前3大持仓占比{}%，集中度中等，可适当关注分散度".format(concentration["top3_pct"]))
 
-    if concentration.get("overlap_warning"):
-        suggestions.append(concentration["overlap_warning"])
+def _analyze_asset_allocation(items, name_map):
+    from datetime import datetime
+    import akshare as ak
+    year = str(datetime.now().year)
+    result = {"股票":0,"债券":0,"现金":0,"其他":0}; count = 0
+    for h in items:
+        try:
+            df = ak.fund_portfolio_asset_allocation_em(symbol=h.code, date=year)
+            if df is not None and not df.empty:
+                row = df.iloc[0]
+                result["股票"] += float(row.get("股票占净值比例",0) or 0)
+                result["债券"] += float(row.get("债券占净值比例",0) or 0)
+                result["现金"] += float(row.get("现金占净值比例",0) or 0)
+                result["其他"] += float(row.get("其他占净值比例",0) or 0)
+                count += 1
+        except Exception: pass
+    if count > 0:
+        for k in result: result[k] = round(result[k]/count, 1)
+    return {"allocation":result, "fund_count":count, "advice":_asset_advice(result)}
 
-    for pair in correlation.get("high_pairs", []):
-        name_a = name_map.get(pair["fund_a"], pair["fund_a"])
-        name_b = name_map.get(pair["fund_b"], pair["fund_b"])
-        suggestions.append("{}({})与{}({})相关性{:.2f}，持仓高度重叠，建议只保留一只".format(
-            pair["fund_a"], name_a, pair["fund_b"], name_b, pair["correlation"]))
 
-    val = valuation.get("avg_percentile", 0.5)
-    if val > 0.80:
-        suggestions.append("组合整体处于高估值区间，建议适当降低仓位或等待回调")
-    elif val < 0.20:
-        suggestions.append("组合整体处于低估值区间，当前是较好的布局时机")
+def _analyze_region_allocation(items, name_map):
+    from services.data import get_full_holdings
+    result = {}; count = 0
+    for h in items:
+        try:
+            fh = get_full_holdings(h.code)
+            region_dist = fh.get("地域分布", {})
+            if region_dist:
+                for k, v in region_dist.items():
+                    if v > 0: result[k] = result.get(k, 0) + v
+                count += 1
+        except Exception: pass
+    if count > 0:
+        for k in result: result[k] = round(result[k]/count, 1)
+    return {"allocation": dict(sorted(result.items(), key=lambda x: x[1], reverse=True)), "fund_count": count}
 
-    worst_funds = sorted(
-        [o for o in valid_out if o.get("risk", {}).get("sharpe_ratio", 0) is not None],
-        key=lambda o: o.get("risk", {}).get("sharpe_ratio", 0) or 0,
-    )
-    if worst_funds:
-        worst = worst_funds[0]
-        sharpe_val = worst.get("risk", {}).get("sharpe_ratio", 0)
-        if isinstance(sharpe_val, (int, float)) and sharpe_val < 0:
-            suggestions.append("{}({})夏普比率{:.2f}，风险调整后收益不佳，建议关注".format(
-                worst["code"], worst["name"], sharpe_val))
 
-    all_directions = {}
+def _analyze_sector_allocation(items, name_map):
+    from datetime import datetime
+    import akshare as ak
+    year = str(datetime.now().year)
+    result = {}; count = 0
+    for h in items:
+        try:
+            df = ak.fund_portfolio_industry_allocation_em(symbol=h.code, date=year)
+            if df is not None and not df.empty:
+                name_col = pct_col = None
+                for col in df.columns:
+                    if "行业" in str(col): name_col = col
+                    if "比例" in str(col) or "占比" in str(col): pct_col = col
+                if name_col and pct_col:
+                    for _, row in df.iterrows():
+                        sn = str(row.get(name_col, "")); pct = float(row.get(pct_col, 0) or 0)
+                        if sn and sn != "nan": result[sn] = result.get(sn, 0) + pct
+                    count += 1
+        except Exception: pass
+    if count > 0:
+        for k in result: result[k] = round(result[k]/count, 1)
+    top5 = [{"行业": k, "占比": v} for k, v in sorted(result.items(), key=lambda x: x[1], reverse=True)[:5]]
+    return {"top5": top5, "fund_count": count}
+
+
+def _analyze_risk_grade(portfolio_risk, valid_out, concentration):
+    vol = portfolio_risk.get("portfolio_volatility", 0)
+    mdd = portfolio_risk.get("portfolio_max_drawdown", 0)
+    top3 = concentration.get("top3_pct", 0)
+    if vol > 0.25 or mdd < -0.4: grade = "高"
+    elif vol > 0.15 or mdd < -0.2: grade = "中"
+    else: grade = "低"
+    return {"grade": grade, "portfolio_volatility": vol, "max_drawdown": mdd, "top3_concentration": top3}
+
+
+def _generate_actions(asset_allocation, region_allocation, sector_allocation, concentration, valuation, valid_out, name_map):
+    actions = []
+    alloc = asset_allocation.get("allocation", {})
+    stock_pct = alloc.get("股票", 0)
+    if stock_pct > 85:
+        actions.append({"action":"新增类别","target":"债券基金(如中长期纯债)","reason":"权益占比{}%，建议配置10-20%债券降低波动".format(stock_pct)})
+    elif stock_pct > 75:
+        actions.append({"action":"新增类别","target":"债券基金","reason":"权益占比{}%，可配置10%左右债券平衡风险".format(stock_pct)})
+
+    region_alloc = region_allocation.get("allocation", {})
+    for rn, pct in region_alloc.items():
+        if pct > 60:
+            actions.append({"action":"新增类别","target":"非{}市场指数基金".format(rn),"reason":"{}占比{}%，高度集中单一市场".format(rn, pct)})
+            break
+
+    for s in sector_allocation.get("top5", []):
+        if s.get("占比", 0) > 50:
+            actions.append({"action":"新增类别","target":"不同行业基金","reason":"{}行业占比{}%，注意板块轮动风险".format(s["行业"], s["占比"])})
+            break
+
     for o in valid_out:
-        for d in o.get("direction", []):
-            if d not in all_directions:
-                all_directions[d] = []
-            all_directions[d].append(o["name"])
-    single_dir_dominance = [
-        (d, funds) for d, funds in all_directions.items()
-        if len(funds) >= len(valid_out) * 0.5 and len(funds) >= 2
-    ]
-    if single_dir_dominance and len(suggestions) < 5:
-        dir_name, fund_names = single_dir_dominance[0]
-        if dir_name not in ["均衡/其他", "暂无数据"]:
-            suggestions.append("多只基金集中于{}方向，建议增加不同风格资产分散风险".format(dir_name))
+        pct = o.get("percentile", 0)
+        if isinstance(pct, (int, float)) and pct > 0.80 and len(actions) < 6:
+            actions.append({"action":"减持","target":"{}(估值分位{}%)".format(o["name"], round(pct*100)),"reason":"估值高位，建议减仓或换到低估值替代"})
 
-    return suggestions[:5]
+    if concentration.get("level") == "高风险" and len(actions) < 6:
+        actions.append({"action":"减持","target":"前3大重仓股","reason":"前3大持仓占比{}%，集中度过高".format(concentration.get("top3_pct",0))})
+    if concentration.get("overlap_warning") and len(actions) < 6:
+        actions.append({"action":"替换","target":"重叠持仓基金","reason":concentration["overlap_warning"]})
 
-
-# ======================================================================
-# Other Endpoints
-# ======================================================================
+    avg_pct = valuation.get("avg_percentile", 0.5)
+    if avg_pct > 0.80 and len(actions) < 6:
+        actions.append({"action":"减持","target":"整体组合","reason":"组合整体估值偏高，建议适当降低仓位或等待回调"})
+    elif avg_pct < 0.20 and len(actions) < 6:
+        actions.append({"action":"加仓","target":"整体组合","reason":"组合整体处于低估值区间，当前是较好的布局时机"})
+    return actions[:6]
 
 
 @router.get("/list")
@@ -524,7 +360,6 @@ def remove(code: str):
 
 @router.post("/batch-import")
 def batch_import(items: List[SaveItem]):
-    """批量导入：只存库，秒回。前端拿到响应后再调用 /analyze 端点进行分析。"""
     from db import save_holding
     codes = []
     for h in items:

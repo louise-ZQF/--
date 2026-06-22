@@ -86,6 +86,8 @@
             <template v-if="s.risk?.sharpe_3y"><span>近3年夏普</span><b>{{ s.risk.sharpe_3y }}</b></template>
           </div>
         </details>
+
+        <FundHoldings :code="s.code" />
       </div>
     </div>
 
@@ -120,6 +122,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { api } from "../api"
+import FundHoldings from "../components/FundHoldings.vue"
 
 const newCode = ref("")
 const watchlist = ref<any[]>([])
