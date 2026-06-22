@@ -1,27 +1,39 @@
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter
 from services.data import get_nav, get_all_funds, get_fund_overview, get_fund_manager_info, get_fund_risk_data, get_short_term_perf, get_full_holdings
 from services.metrics import nav_percentile, trend_ma, rsi
 from db import add_watch, list_watch, del_watch
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
 
 @router.get("/list")
 def get_list(): return list_watch()
 
+
 @router.post("/add")
 def add(code: str): add_watch(code); return {"ok": True}
 
+
 @router.delete("/del")
 def remove(code: str): del_watch(code); return {"ok": True}
+
 
 @router.get("/holdings")
 def fund_holdings(code: str):
     """获取基金的完整持仓和地域分布。"""
     return get_full_holdings(code)
 
+
 @router.get("/signal")
 def signal():
-    # Get name map
+    """分析自选基金的买入信号。
+
+    每只基金通过 ThreadPoolExecutor 并行处理（max_workers=5），
+    单只基金的网络请求失败不会导致整体崩溃。
+    """
     try:
         all_funds = get_all_funds()
         name_map = {}
@@ -30,11 +42,22 @@ def signal():
     except Exception:
         name_map = {}
 
-    res = []
-    for w in list_watch():
+    watchlist = list_watch()
+
+    def process_one(w):
         code = w["code"]
-        df = get_nav(code)
-        if df.empty: continue
+        try:
+            df = get_nav(code)
+        except Exception:
+            df = None
+
+        if df is None or df.empty:
+            return {
+                "code": code,
+                "name": name_map.get(code, code),
+                "error": "无净值数据",
+            }
+
         nav = df["nav"]
         pct = nav_percentile(nav)
         year = nav.tail(252)
@@ -43,7 +66,6 @@ def signal():
         tr = trend_ma(nav)
         name = name_map.get(code, code)
 
-        # Detailed buy analysis
         checks = {}
         checks["估值偏低(分位<35%)"] = {"pass": pct < 0.35, "value": f"当前分位{pct:.0%}"}
         checks["已回调(距高点<-10%)"] = {"pass": dd < -0.10, "value": f"距年内高点{dd:.0%}"}
@@ -52,31 +74,52 @@ def signal():
 
         can_buy = all(c["pass"] for c in checks.values())
 
-        # Build detailed reason
         if can_buy:
-            reason_text = "✅ 四维条件全部满足，可以考虑分批买入"
+            reason_text = "四维条件全部满足，可以考虑分批买入"
         else:
             failed = [k for k, v in checks.items() if not v["pass"]]
-            reason_text = f"❌ {len(failed)}项条件未满足："
+            reason_text = f"{len(failed)}项条件未满足："
             for f_item in failed:
                 reason_text += f"\n  · {f_item}（{checks[f_item]['value']}）"
 
-        res.append({
-            "code": code, "name": name,
-            "can_buy": can_buy,
+        try: overview = get_fund_overview(code)
+        except Exception: overview = {}
+        try: manager = get_fund_manager_info(code)
+        except Exception: manager = {}
+        try: risk = get_fund_risk_data(code)
+        except Exception: risk = {}
+        try: perf = get_short_term_perf(code)
+        except Exception: perf = {}
+        try: holdings_summary = _build_holdings_summary(code)
+        except Exception: holdings_summary = {}
+
+        return {
+            "code": code, "name": name, "can_buy": can_buy,
             "reason": reason_text,
             "detail": f"估值分位{pct:.0%} · 距高点{dd:.0%} · RSI{r:.0f} · 趋势{tr}",
             "checks": {k: {"pass": v["pass"], "value": v["value"]} for k, v in checks.items()},
             "percentile": round(pct, 2), "drawdown": round(dd, 2),
             "rsi": round(r, 0), "trend": tr,
-            # FundCrawler enriched data
-            "overview": get_fund_overview(code),
-            "manager": get_fund_manager_info(code),
-            "risk": get_fund_risk_data(code),
-            "perf": get_short_term_perf(code),
-            # 持仓摘要
-            "holdings_summary": _build_holdings_summary(code),
-        })
+            "overview": overview, "manager": manager, "risk": risk,
+            "perf": perf, "holdings_summary": holdings_summary,
+        }
+
+    res = []
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(process_one, w): w for w in watchlist}
+        for future in as_completed(futures):
+            w = futures[future]
+            try:
+                res.append(future.result())
+            except Exception as exc:
+                res.append({
+                    "code": w["code"],
+                    "name": name_map.get(w["code"], w["code"]),
+                    "error": str(exc),
+                })
+
+    code_order = {w["code"]: i for i, w in enumerate(watchlist)}
+    res.sort(key=lambda o: code_order.get(o["code"], 999))
     return res
 
 

@@ -262,7 +262,16 @@ def get_index_daily(code: str) -> pd.DataFrame:
 def get_full_holdings(code: str) -> dict:
     """获取基金全部持仓 + 地域分布比例。"""
     try:
-        df = ak.fund_portfolio_hold_em(symbol=code, date="2025")
+        from datetime import datetime
+        current_year = datetime.now().year
+        df = None
+        for y in (current_year, current_year - 1):
+            try:
+                df = ak.fund_portfolio_hold_em(symbol=code, date=str(y))
+                if df is not None and not df.empty:
+                    break
+            except Exception:
+                continue
         if df is None or df.empty:
             return {"holdings": [], "region_breakdown": {}}
 

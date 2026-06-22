@@ -47,9 +47,11 @@ def annual_volatility(rets: pd.Series) -> float:
 
 def sharpe_ratio(rets: pd.Series, rf: float = 0.02) -> float:
     """夏普比率。"""
-    ann_ret = annual_return(rets)
-    ann_vol = annual_volatility(rets)
-    return float((ann_ret - rf) / (ann_vol + 1e-9)) if ann_vol > 0 else 0.0
+    if len(rets) < 2:
+        return 0.0
+    ann_ret = rets.mean() * 252
+    ann_vol = rets.std() * np.sqrt(252)
+    return float((ann_ret - rf) / ann_vol) if ann_vol > 0 else 0.0
 
 def rsi(nav: pd.Series, n: int = 14) -> float:
     """RSI 指标。"""
@@ -61,12 +63,14 @@ def rsi(nav: pd.Series, n: int = 14) -> float:
 
 def sortino_ratio(rets: pd.Series, rf: float = 0.02) -> float:
     """索提诺比率(只计下行风险)。"""
+    if len(rets) < 2:
+        return 0.0
+    ann_ret = rets.mean() * 252
     downside = rets[rets < 0]
     if len(downside) < 2:
         return 0.0
-    ann_ret = annual_return(rets)
     ann_down_vol = downside.std() * np.sqrt(252)
-    return float((ann_ret - rf) / (ann_down_vol + 1e-9)) if ann_down_vol > 0 else 0.0
+    return float((ann_ret - rf) / ann_down_vol) if ann_down_vol > 0 else 0.0
 
 def calmar_ratio(nav: pd.Series, rf: float = 0.02) -> float:
     """Calmar比率 = (年化收益率-无风险利率) / 最大回撤绝对值。"""

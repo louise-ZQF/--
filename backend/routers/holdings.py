@@ -424,8 +424,8 @@ def _portfolio_risk_metrics(nav_data: dict, items: List[HoldItem]) -> dict:
     if nav_df.empty or nav_df.shape[1] < 1:
         return {"portfolio_volatility": 0, "portfolio_sharpe": 0, "portfolio_max_drawdown": 0}
 
+    nav_df = nav_df / nav_df.iloc[0]
     port_nav = nav_df.mean(axis=1)
-    port_nav = port_nav / port_nav.iloc[0]
     rets = port_nav.pct_change().dropna()
 
     if len(rets) < 5:

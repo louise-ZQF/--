@@ -43,7 +43,7 @@ def classify_region_by_name(name: str, code: str = "") -> str:
             return "hk"
         if "日本" in name or "日经" in name or "东京" in name:
             return "jp"
-        if "韩国" in name or "韩国" in name:
+        if "韩国" in name:
             return "kr"
         return "us"
     if "港股" in name or "恒生" in name or "香港" in name:
